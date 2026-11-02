@@ -171,6 +171,8 @@ def test_news_feed_parse_deduplication_and_case_creation(client,journalist,edito
         assert second.inserted_count==0
     listed=client.get('/api/news?sector=autre',headers=journalist)
     assert listed.status_code==200 and any(x['title']=='Publication a examiner' for x in listed.json()['items'])
+    assert client.get('/api/news?source_id=',headers=journalist).status_code==200
+    assert client.get('/api/news?source_id=pas-un-id',headers=journalist).status_code==422
     article=next(x for x in listed.json()['items'] if x['title']=='Publication a examiner')
     assert client.post('/api/news/sync',headers=journalist).status_code==403
     created=client.post(f"/api/news/{article['id']}/verify",headers=journalist)

@@ -194,12 +194,14 @@ def create_claim(data:ClaimIn,db:Session=Depends(db_session),user:User=Depends(c
     return {'id':item.id}
 
 @app.get('/api/news')
-def list_news(q:str='',sector:str='',region:str='',source_id:int|None=None,order:Literal['newest','oldest']='newest',db:Session=Depends(db_session),user:User=Depends(current_user)):
+def list_news(q:str='',sector:str='',region:str='',source_id:str='',order:Literal['newest','oldest']='newest',db:Session=Depends(db_session),user:User=Depends(current_user)):
     stmt=db.query(NewsItem,NewsSource).join(NewsSource,NewsItem.source_id==NewsSource.id)
     if q: stmt=stmt.filter(NewsItem.title.ilike(f'%{q[:100]}%'))
     if sector: stmt=stmt.filter(NewsItem.sector==sector[:80])
     if region: stmt=stmt.filter(NewsItem.region==checked_region(region))
-    if source_id: stmt=stmt.filter(NewsItem.source_id==source_id)
+    if source_id:
+        try: stmt=stmt.filter(NewsItem.source_id==int(source_id))
+        except ValueError as exc: raise HTTPException(422,'Source invalide') from exc
     sort=NewsItem.published_at.asc().nullslast() if order=='oldest' else NewsItem.published_at.desc().nullslast()
     rows=stmt.order_by(sort,NewsItem.collected_at.desc()).limit(200).all()
     sources=db.query(NewsSource).filter_by(enabled=True).order_by(NewsSource.name).all()

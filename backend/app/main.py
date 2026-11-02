@@ -17,10 +17,11 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from .core import (Analysis, Case, Video, DirectorySource, Evidence, Media, User, Verdict, SessionLocal,
+from .core import (Analysis, Case, Video, DirectorySource, Evidence, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
     now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
     evidence_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
+from .news import sync_source
 
 app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.4.0')
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
@@ -85,6 +86,11 @@ class ClaimIn(BaseModel):
     original_source_url:str|None=None
     sector:str=Field(default='autre',max_length=80)
     region:str|None=Field(default=None,max_length=80)
+
+def news_item_view(item, source):
+    return {'id':item.id,'title':item.title,'original_url':item.original_url,'published_at':item.published_at,
+        'collected_at':item.collected_at,'sector':item.sector,'region':item.region,'source':source.name,
+        'source_id':source.id,'verification_case_id':item.verification_case_id}
 
 @app.get('/api/health')
 def health():
@@ -186,6 +192,42 @@ def create_claim(data:ClaimIn,db:Session=Depends(db_session),user:User=Depends(c
     item=Case(owner_id=user.id,claim_text=data.claim_text.strip(),original_source_url=valid_url(data.original_source_url),sector=data.sector,region=checked_region(data.region),status='en_cours')
     db.add(item);db.flush();audit(db,user.id,item.id,'claim_created',{'region':data.region});db.commit()
     return {'id':item.id}
+
+@app.get('/api/news')
+def list_news(q:str='',sector:str='',region:str='',source_id:int|None=None,order:Literal['newest','oldest']='newest',db:Session=Depends(db_session),user:User=Depends(current_user)):
+    stmt=db.query(NewsItem,NewsSource).join(NewsSource,NewsItem.source_id==NewsSource.id)
+    if q: stmt=stmt.filter(NewsItem.title.ilike(f'%{q[:100]}%'))
+    if sector: stmt=stmt.filter(NewsItem.sector==sector[:80])
+    if region: stmt=stmt.filter(NewsItem.region==checked_region(region))
+    if source_id: stmt=stmt.filter(NewsItem.source_id==source_id)
+    sort=NewsItem.published_at.asc().nullslast() if order=='oldest' else NewsItem.published_at.desc().nullslast()
+    rows=stmt.order_by(sort,NewsItem.collected_at.desc()).limit(200).all()
+    sources=db.query(NewsSource).filter_by(enabled=True).order_by(NewsSource.name).all()
+    last=db.query(NewsSync).filter_by(status='success').order_by(NewsSync.completed_at.desc()).first()
+    latest_errors=db.query(NewsSync).filter_by(status='error').order_by(NewsSync.completed_at.desc()).limit(3).all()
+    return {'items':[news_item_view(item,src) for item,src in rows], 'sources':[{'id':s.id,'name':s.name} for s in sources],
+        'last_sync_at':last.completed_at if last else None,'errors':[s.error_message for s in latest_errors if s.error_message]}
+
+@app.post('/api/news/sync')
+def collect_news(db:Session=Depends(db_session),user:User=Depends(current_user)):
+    if user.role!='editor': raise HTTPException(403,'Collecte réservée au responsable de rédaction')
+    try:
+        results=[sync_source(db,source) for source in db.query(NewsSource).filter_by(enabled=True).all()]
+    except RuntimeError as exc: raise HTTPException(409,str(exc)) from exc
+    return {'items':[{'source_id':x.source_id,'status':x.status,'inserted_count':x.inserted_count,'error_message':x.error_message} for x in results]}
+
+@app.post('/api/news/{item_id}/verify',status_code=201)
+def create_case_from_news(item_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    article=db.get(NewsItem,item_id)
+    if not article: raise HTTPException(404,'Publication introuvable')
+    if article.verification_case_id:
+        case=get_case(article.verification_case_id,db,user)
+        return {'id':case.id,'existing':True}
+    item=Case(owner_id=user.id,claim_text=article.title,original_source_url=article.original_url,sector=article.sector,region=article.region,status='en_cours')
+    db.add(item);db.flush(); article.verification_case_id=item.id
+    audit(db,user.id,item.id,'news_case_created',{'news_item_id':article.id,'published_at':article.published_at.isoformat() if article.published_at else None})
+    db.commit()
+    return {'id':item.id,'existing':False}
 
 VIDEO_MAX_BYTES=int(os.environ.get('VIDEO_MAX_MB','50'))*1024*1024
 VIDEO_MAX_SECONDS=int(os.environ.get('VIDEO_MAX_SECONDS','30'))

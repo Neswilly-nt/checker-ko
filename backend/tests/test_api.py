@@ -3,6 +3,8 @@ from io import BytesIO
 from PIL import Image
 from app.core import c2pa_analyze, inspect_image, MAX_BYTES
 from app.core import SessionLocal, Case
+from app.core import NewsItem, NewsSource
+from app.news import parse_feed, sync_source
 
 ASSETS=Path(__file__).parents[1]/'demo_assets'
 
@@ -151,6 +153,37 @@ def test_text_case_without_image_and_existing_case_preserved(client,journalist,u
     assert evidence.status_code==201
     verdict=client.post(f'/api/cases/{item["id"]}/verdict',headers=journalist,json={'verdict':'Non déterminé','reasoning':'Les sources restent insuffisantes.'})
     assert verdict.status_code==201
+
+def test_news_feed_parse_deduplication_and_case_creation(client,journalist,editor,monkeypatch):
+    feed=b'''<?xml version="1.0"?><rss><channel><item><guid>news-unique</guid><title>Publication a examiner</title><link>https://example.org/article</link><pubDate>Mon, 03 Nov 2026 10:00:00 GMT</pubDate><category>Sante</category></item></channel></rss>'''
+    class Response: status_code=200; content=feed
+    class Client:
+        def __init__(self,**_): pass
+        def __enter__(self): return self
+        def __exit__(self,*_): return False
+        def get(self,_): return Response()
+    monkeypatch.setattr('app.news.socket.getaddrinfo',lambda *_args,**_kwargs:[(None,None,None,None,('8.8.8.8',443))])
+    monkeypatch.setattr('app.news.httpx.Client',Client)
+    with SessionLocal() as db:
+        source=db.query(NewsSource).filter_by(key='madagascar-tribune').first()
+        first=sync_source(db,source); second=sync_source(db,source)
+        assert first.status=='success' and first.inserted_count==1
+        assert second.inserted_count==0
+    listed=client.get('/api/news?sector=autre',headers=journalist)
+    assert listed.status_code==200 and any(x['title']=='Publication a examiner' for x in listed.json()['items'])
+    article=next(x for x in listed.json()['items'] if x['title']=='Publication a examiner')
+    assert client.post('/api/news/sync',headers=journalist).status_code==403
+    created=client.post(f"/api/news/{article['id']}/verify",headers=journalist)
+    assert created.status_code==201
+    duplicate=client.post(f"/api/news/{article['id']}/verify",headers=journalist)
+    assert duplicate.json()['id']==created.json()['id']
+    item=client.get(f"/api/cases/{created.json()['id']}",headers=journalist).json()
+    assert item['claim_text']=='Publication a examiner' and item['original_source_url']=='https://example.org/article'
+
+def test_news_invalid_feed_and_unknown_dates():
+    assert parse_feed(b'<rss><channel><item><title>Sans lien</title></item></channel></rss>')==[]
+    parsed=parse_feed(b'<rss><channel><item><guid>x</guid><title>Sans date</title><link>https://example.org/x</link></item></channel></rss>')
+    assert parsed[0]['published_at'] is None
 
 def test_video_missing_ffmpeg(client,journalist,monkeypatch):
     monkeypatch.setenv('FFMPEG_PATH','C:/missing/ffmpeg.exe')

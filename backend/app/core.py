@@ -160,6 +160,42 @@ class Audit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     details_json: Mapped[str] = mapped_column(Text, default='{}')
 
+class NewsSource(Base):
+    __tablename__ = 'news_sources'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    feed_url: Mapped[str] = mapped_column(String(500), unique=True)
+    source_type: Mapped[str] = mapped_column(String(20), default='rss')
+    sectors_json: Mapped[str] = mapped_column(Text, default='[]')
+    checked_at: Mapped[str] = mapped_column(String(30))
+    reuse_terms: Mapped[str] = mapped_column(Text, default='')
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class NewsItem(Base):
+    __tablename__ = 'news_items'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey('news_sources.id'), index=True)
+    canonical_id: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    original_url: Mapped[str] = mapped_column(String(500))
+    published_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    sector: Mapped[str] = mapped_column(String(80), default='autre')
+    region: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    verification_case_id: Mapped[int|None] = mapped_column(ForeignKey('verification_cases.id'), unique=True, nullable=True)
+
+class NewsSync(Base):
+    __tablename__ = 'news_syncs'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey('news_sources.id'))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    completed_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default='running')
+    fetched_count: Mapped[int] = mapped_column(Integer, default=0)
+    inserted_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str|None] = mapped_column(String(500), nullable=True)
+
 APP_ENV = os.environ.get('APP_ENV', 'development')
 if APP_ENV not in ('development', 'test', 'production'):
     raise RuntimeError('APP_ENV doit valoir development, test ou production')
@@ -291,7 +327,7 @@ def tool_path(name, variable):
     configured=os.environ.get(variable)
     if configured:
         candidate=Path(configured).expanduser()
-        return str(candidate.resolve()) if candidate.is_file() else None
+        if candidate.is_file(): return str(candidate.resolve())
     portable=ROOT.parent/'tools'/'media'
     if name in ('ffmpeg','ffprobe'):
         for candidate in portable.glob(f'ffmpeg/*/bin/{name}.exe'):
@@ -374,6 +410,7 @@ def init_db():
                         'resources_json':"TEXT NOT NULL DEFAULT '[]'", 'contact_email':'VARCHAR(250)',
                         'contact_phone':'VARCHAR(80)', 'verification_status':"VARCHAR(40) NOT NULL DEFAULT 'a_actualiser'",
                     },
+                    'news_items': {'verification_case_id':'INTEGER'},
                 }
                 needs_migration=any(table in existing_tables and set(fields)-{row[1] for row in connection.execute(f'PRAGMA table_info({table})')} for table,fields in additions.items())
                 if needs_migration:
@@ -392,6 +429,16 @@ def init_db():
         for email,name,role,password in (DEMO_USERS if APP_ENV == 'development' else []):
             if not db.query(User).filter_by(email=email).first():
                 db.add(User(name=name,email=email,role=role,password_hash=hash_password(password)))
+        # Sources are application-controlled; users cannot submit arbitrary collection URLs.
+        feeds=[
+            ('madagascar-tribune','Madagascar Tribune','https://www.madagascar-tribune.com/spip.php?page=backend'),
+            ('midi-madagasikara','Midi Madagasikara','https://midi-madagasikara.mg/feed/'),
+        ]
+        for key,name,feed_url in feeds:
+            if not db.query(NewsSource).filter_by(key=key).first():
+                db.add(NewsSource(key=key,name=name,feed_url=feed_url,source_type='rss',
+                    sectors_json='["autre"]',checked_at='2026-11-03',
+                    reuse_terms='Consulter les conditions du site éditeur avant toute republication.',enabled=True))
         db.commit()
         for old in db.query(DirectorySource).filter_by(demo_only=True,archived=False).all():
             old.archived=True

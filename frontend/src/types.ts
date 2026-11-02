@@ -1,0 +1,10 @@
+export type User = {id:number;name:string;email:string;role:'journalist'|'editor'};
+export type Analysis = {tool_status:string;c2pa_status:string;claim:{signature:string;emetteur:string};warnings:string[];analyzed_at:string};
+export type Media = {id:number;filename:string;mime_type:string;size_bytes:number;sha256:string;phash:string;width:number;height:number;created_at:string;exif:Record<string,string>;analysis:Analysis;preview_url:string};
+export type Video = {filename:string;sha256:string;size_bytes:number;duration_seconds:number;width:number;height:number;frames:Media[]};
+export type Match = {media_id:number;title:string;source_url:string|null;archive_date:string|null;distance:number;visual_similarity_index:number;preview_url:string;is_demo:boolean;warning:string};
+export type Evidence = {id:number;title:string;url:string|null;date_of_source:string|null;note:string;relation_type:'appuie'|'contredit'|'contexte';archived_media_id:number|null;created_at:string};
+export type Verdict = {id:number;verdict:string;reasoning:string;status:string;created_at:string;author_name:string;reviewer_name:string|null;reviewed_at:string|null};
+export type Case = {id:number;claim_text:string;original_source_url:string|null;status:string;sector:string;region:string|null;created_at:string;updated_at:string;owner_id:number;owner_name:string;media:Media;video:Video|null;matches:Match[];evidence:Evidence[];verdicts:Verdict[]};
+export type CaseItem = {id:number;claim_text:string;status:string;sector:string;region:string|null;content_type:'photo'|'video'|'texte';created_at:string;updated_at:string};
+export type DirectorySource={id:number;organization:string;acronym:string|null;organization_type:string|null;sector:string;description:string;website_url:string|null;geographic_scope:string|null;region:string|null;reference_url:string|null;resources:string[];contact_email:string|null;contact_phone:string|null;verification_status:string;last_checked_at:string|null;demo_only:boolean;archived:boolean};

@@ -22,8 +22,9 @@ from .core import (Analysis, Case, Video, DirectorySource, Evidence, SourceAsses
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
+from .statistical_catalog import PUBLICATIONS, publication_view
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.4.0')
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.7.0')
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
 
 @app.on_event('startup')
@@ -490,6 +491,15 @@ def sources(sector:str='',region:str='',organization_type:str='',q:str='',includ
     if q:stmt=stmt.filter(DirectorySource.organization.ilike('%'+q[:100]+'%'))
     rows=stmt.order_by(DirectorySource.organization.asc()).limit(200).all()
     return {'items':[source_view(s) for s in rows]}
+
+@app.get('/api/statistics')
+def statistical_publications(sector:str='',q:str='',user:User=Depends(current_user)):
+    """Publications documentées; les observations restent vides sans données vérifiées."""
+    query=q.strip().casefold()[:100]
+    items=[publication_view(item) for item in PUBLICATIONS
+        if (not sector or item['sector']==sector)
+        and (not query or query in ' '.join(str(item.get(k) or '') for k in ('title','producer','sector','description','reference_year')).casefold())]
+    return {'items':items,'observation_count':0}
 
 @app.get('/api/sources/{source_id}')
 def source_details(source_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):

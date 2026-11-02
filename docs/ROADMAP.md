@@ -15,3 +15,9 @@ Annuaire vérifiable et actualisable, catalogue statistique sourcé, français/m
 ## Phase 4 — déploiement
 
 Migration de données versionnée, HTTPS, sessions sécurisées, protection contre les tentatives de connexion, PostgreSQL si utile, PWA limitée aux ressources publiques, tests de confidentialité et de performance.
+# Suite du catalogue Sources v0.7
+
+- Persister les publications et observations avec migrations non destructives et provenance détaillée.
+- Ajouter une interface d’administration de contacts professionnels publiquement vérifiés, avec date et source de vérification.
+- Ajouter un archivage explicite et un historique d’audit pour les fiches partagées.
+- Étendre les tests d’intégration au rendu des références dans le rapport et à la navigation mobile.

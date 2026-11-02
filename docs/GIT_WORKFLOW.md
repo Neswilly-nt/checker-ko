@@ -1,6 +1,6 @@
 ﻿# Travail Git en équipe
 
-`main` représente la version stable. Chaque changement part d'une branche courte `feat/sujet` ou `fix/sujet`, créée depuis `main` à jour. Ouvrir une Pull Request vers `main` avec le contexte, les changements et les tests réellement exécutés. Attendre les contrôles CI et une relecture avant fusion. Éviter les commits qui cassent volontairement l'application.
+`main` représente la version stable et `develop` est la branche d'intégration active. Pour Checker-ko, travailler et pousser directement sur `develop`; ne pas créer de branche de fonctionnalité ni ouvrir de Pull Request pour ce flux. Synchroniser `develop` avec `origin/develop` avant de commencer. Garder les commits cohérents, en Conventional Commits, et vérifier les contrôles CI après le push. Éviter les commits qui cassent volontairement l'application.
 
 Utiliser des messages Conventional Commits, par exemple `feat(video): ...`, `fix(ui): ...`, `test(api): ...`, `docs: ...` ou `chore(repo): ...`. Garder chaque commit cohérent et vérifiable. Avant une Pull Request, lancer `npm run check` et `npm run build` dans `frontend/`, puis `python -m pytest -q` dans `backend/`. La CI répète ces contrôles sur les pushes et Pull Requests vers `main`.
 
@@ -8,7 +8,7 @@ Ne jamais ajouter à Git `backend/private_data/`, des bases SQLite, des médias 
 
 Les fixtures de `backend/demo_assets/` sont fictives et nécessaires aux tests. Les archives privées restent sur le poste de l'équipe, hors du dépôt et de la CI. Les nouvelles données de test doivent être synthétiques ou accompagnées des droits nécessaires.
 
-Pour mettre à jour sa branche : récupérer `main`, intégrer ses changements localement, résoudre les conflits et relancer les tests. Ne pas utiliser de push forcé sur `main`. Les fonctionnalités photo, vidéo, texte, preuves, sources et conclusions doivent rester couvertes lors de leur modification.
+Pour mettre à jour `develop` : récupérer `origin/develop`, intégrer ses changements localement et relancer les tests. Ne jamais utiliser `git push --force`. Les fonctionnalités photo, vidéo, texte, preuves, sources et conclusions doivent rester couvertes lors de leur modification.
 
 ## Avis de dépendances
 

@@ -70,3 +70,6 @@ Un média JSON contient `analysis.tool_status`, `analysis.c2pa_status`, `analysi
 - `review` exige un statut `review_requested` et un rôle `editor` distinct du propriétaire.
 - Toute décision humaine enregistre un nouvel enregistrement `verdicts` et une trace d'audit.
 - `GET /api/sources?include_archived=true` est réservé au rôle `editor` et montre les anciennes fiches fictives identifiées comme archives.
+# Catalogue documentaire
+
+`GET /api/statistics?q=&sector=` retourne les publications documentées accessibles à l’utilisateur. Chaque publication indique sa période de référence, sa couverture, ses liens et la dernière date de contrôle du lien. `observations` est vide et `observation_count` vaut zéro tant qu’aucune valeur vérifiée n’est enregistrée. Cette route ne collecte pas les documents.

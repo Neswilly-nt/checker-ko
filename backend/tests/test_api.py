@@ -143,6 +143,16 @@ def test_directory_and_unverified_demo_labels(client,journalist,editor):
     assert created.status_code==201
     assert client.get(f"/api/sources/{created.json()['id']}",headers=editor).json()['verification_status']=='a_actualiser'
 
+def test_statistical_catalog_has_documented_publications_without_fabricated_observations(client,journalist):
+    response=client.get('/api/statistics',headers=journalist)
+    assert response.status_code==200
+    items=response.json()['items']
+    assert {item['key'] for item in items}=={'health-yearbook-2024','education-yearbook-2023-2024','rgph3-tome1'}
+    assert all(item['url'].startswith('https://') and item['observations']==[] for item in items)
+    assert response.json()['observation_count']==0
+    assert len(client.get('/api/statistics?sector=sant%C3%A9',headers=journalist).json()['items'])==1
+    assert len(client.get('/api/statistics?q=RGPH',headers=journalist).json()['items'])==1
+
 def test_regions_and_case_validation(client,journalist):
     regions=client.get('/api/regions',headers=journalist)
     assert regions.status_code==200 and len(regions.json()['items'])==24

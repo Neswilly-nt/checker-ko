@@ -93,6 +93,20 @@ def test_evidence_verdict_report(client,journalist,upload_case):
     assert report.json()['evidence'][0]['title']=='Archive illustrée'
     assert report.json()['visibility']=='private'
 
+def test_source_assessment_history_summary_and_permissions(client,journalist,editor,upload_case):
+    evidence=client.post(f'/api/cases/{upload_case}/evidence',headers=journalist,json={'title':'Document primaire','relation_type':'appuie','note':'Statistique à recouper'}).json()
+    payload={'source_identity_status':'oui','subject_expertise_status':'oui','verifiable_evidence_status':'oui','primary_source_status':'oui','evidence_relevance':'directe','assessment_note':'Document accessible, périmètre à vérifier.'}
+    created=client.post(f'/api/cases/{upload_case}/evidence/{evidence["id"]}/assessment',headers=journalist,json=payload)
+    assert created.status_code==201 and created.json()['assessment_summary']=='elements_solides'
+    payload['contradictions_status']='oui';payload['justification']='Une contradiction a été documentée.'
+    updated=client.patch(f'/api/cases/{upload_case}/evidence/{evidence["id"]}/assessment',headers=journalist,json=payload)
+    assert updated.status_code==200 and updated.json()['assessment_summary']=='points_de_vigilance'
+    history=client.get(f'/api/cases/{upload_case}/evidence/{evidence["id"]}/assessment/history',headers=journalist).json()['items']
+    assert len(history)==2 and history[0]['justification']
+    summary=client.get(f'/api/cases/{upload_case}/assessments/summary',headers=journalist).json()
+    assert summary['favorable'][0]['assessment']['assessment_summary']=='points_de_vigilance'
+    assert client.post(f'/api/cases/{upload_case}/evidence/{evidence["id"]}/assessment',headers=editor,json=payload).status_code==403
+
 def test_access_control(client,journalist,editor,upload_case):
     item=client.get(f'/api/cases/{upload_case}',headers=journalist).json()
     assert client.get(f'/api/cases/{upload_case}',headers=editor).status_code==403

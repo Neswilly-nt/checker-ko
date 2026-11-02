@@ -17,6 +17,9 @@ URL locale : `http://127.0.0.1:8000`. Swagger interactif : `/docs`. Authentifica
 | GET | `/api/cases/{id}/matches` | Correspondances internes uniquement |
 | POST | `/api/cases/{id}/evidence` | Ajouter un élément |
 | PUT/DELETE | `/api/cases/{id}/evidence/{evidence_id}` | Modifier / retirer |
+| GET/POST/PATCH | `/api/cases/{id}/evidence/{evidence_id}/assessment` | Consulter ou documenter l'évaluation de cette preuve |
+| GET | `/api/cases/{id}/evidence/{evidence_id}/assessment/history` | Historique traçable des révisions |
+| GET | `/api/cases/{id}/assessments/summary` | Éléments favorables, contraires, contexte et incertitudes |
 | POST | `/api/cases/{id}/verdict` | Conclure par intervention humaine |
 | POST | `/api/cases/{id}/request-review` | Relecture facultative |
 | POST | `/api/cases/{id}/review` | Décision du rédacteur distinct de l'auteur |

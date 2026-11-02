@@ -118,6 +118,38 @@ class Evidence(Base):
     archived_media_id: Mapped[int|None] = mapped_column(ForeignKey('media_assets.id'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class SourceAssessment(Base):
+    """Human, case-specific documentation of a source and its evidentiary scope."""
+    __tablename__ = 'source_assessments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey('verification_cases.id'), index=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey('evidence.id'), unique=True, index=True)
+    evaluator_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    source_identity_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    subject_expertise_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    verifiable_evidence_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    primary_source_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    date_verified_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    original_document_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    independent_corroboration_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    interests_disclosure_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    contradictions_status: Mapped[str|None] = mapped_column(String(20), nullable=True)
+    evidence_relevance: Mapped[str|None] = mapped_column(String(30), nullable=True)
+    assessment_summary: Mapped[str] = mapped_column(String(50), default='evaluation_incomplete')
+    assessment_note: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class SourceAssessmentHistory(Base):
+    __tablename__ = 'source_assessment_history'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey('source_assessments.id'), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    change_kind: Mapped[str] = mapped_column(String(20))
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Verdict(Base):
     __tablename__ = 'verdicts'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -365,7 +397,12 @@ def user_view(user): return {'id':user.id,'name':user.name,'email':user.email,'r
 def media_view(media, analysis=None):
     return {'id':media.id,'filename':media.original_filename,'mime_type':media.mime_type,'size_bytes':media.size_bytes,'sha256':media.sha256,'phash':media.phash,'width':media.width,'height':media.height,'created_at':media.created_at,'exif':json.loads(media.exif_json),'is_archive':media.is_archive,'preview_url':f'/api/media/{media.id}/preview','analysis': {'tool_status':analysis.tool_status,'c2pa_status':analysis.c2pa_status,'claim':json.loads(analysis.c2pa_claim_json),'warnings':json.loads(analysis.warnings_json),'analyzed_at':analysis.analyzed_at} if analysis else None}
 
-def evidence_view(e): return {'id':e.id,'title':e.title,'url':e.url,'date_of_source':e.date_of_source,'note':e.note,'relation_type':e.relation_type,'archived_media_id':e.archived_media_id,'created_at':e.created_at}
+def assessment_view(value):
+    if not value: return None
+    fields=('source_identity_status','subject_expertise_status','verifiable_evidence_status','primary_source_status','date_verified_status','original_document_status','independent_corroboration_status','interests_disclosure_status','contradictions_status','evidence_relevance','assessment_summary','assessment_note')
+    return {'id':value.id, **{field:getattr(value,field) for field in fields}, 'created_at':value.created_at,'updated_at':value.updated_at}
+
+def evidence_view(e, assessment=None): return {'id':e.id,'title':e.title,'url':e.url,'date_of_source':e.date_of_source,'note':e.note,'relation_type':e.relation_type,'archived_media_id':e.archived_media_id,'created_at':e.created_at,'assessment':assessment_view(assessment)}
 
 def verdict_view(v, db):
     author=db.get(User,v.author_id)

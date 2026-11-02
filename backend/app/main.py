@@ -17,9 +17,9 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from .core import (Analysis, Case, Video, DirectorySource, Evidence, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
+from .core import (Analysis, Case, Video, DirectorySource, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
     now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
-    evidence_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
+    evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
 
@@ -58,6 +58,21 @@ class EvidenceIn(BaseModel):
     note: str = Field(default='',max_length=5000)
     relation_type: Literal['appuie','contredit','contexte']
     archived_media_id: int|None = None
+
+AssessmentStatus = Literal['oui','non','a_verifier','non_applicable']
+class AssessmentIn(BaseModel):
+    source_identity_status: AssessmentStatus|None = None
+    subject_expertise_status: AssessmentStatus|None = None
+    verifiable_evidence_status: AssessmentStatus|None = None
+    primary_source_status: AssessmentStatus|None = None
+    date_verified_status: AssessmentStatus|None = None
+    original_document_status: AssessmentStatus|None = None
+    independent_corroboration_status: AssessmentStatus|None = None
+    interests_disclosure_status: AssessmentStatus|None = None
+    contradictions_status: AssessmentStatus|None = None
+    evidence_relevance: Literal['directe','indirecte','non_etablie']|None = None
+    assessment_note: str = Field(default='',max_length=5000)
+    justification: str = Field(default='',max_length=2000)
 
 class VerdictIn(BaseModel):
     verdict: Literal['Confirmé','Faux','Trompeur','Non déterminé']
@@ -143,6 +158,7 @@ def case_view(db,item,user):
     analysis=db.query(Analysis).filter_by(asset_id=media.id).first() if media else None
     video=db.query(Video).filter_by(case_id=item.id).first()
     evidence=db.query(Evidence).filter_by(case_id=item.id).order_by(Evidence.id.desc()).all()
+    assessments={value.evidence_id:value for value in db.query(SourceAssessment).filter_by(case_id=item.id).all()}
     verdicts=db.query(Verdict).filter_by(case_id=item.id).order_by(Verdict.id.desc()).all()
     author=db.get(User,item.owner_id)
     return {'id':item.id,'claim_text':item.claim_text,'original_source_url':item.original_source_url,
@@ -151,7 +167,7 @@ def case_view(db,item,user):
         'video':{'filename':video.original_filename,'sha256':video.sha256,'size_bytes':video.size_bytes,
                  'duration_seconds':video.duration_seconds,'width':video.width,'height':video.height,
                  'frames':[media_view(db.get(Media,mid)) for mid in json.loads(video.frame_ids_json)]} if video else None,
-        'matches':matches_for(db,item,user),'evidence':[evidence_view(e) for e in evidence],
+        'matches':matches_for(db,item,user),'evidence':[evidence_view(e,assessments.get(e.id)) for e in evidence],
         'verdicts':[verdict_view(v,db) for v in verdicts]}
 
 @app.get('/api/cases')
@@ -342,6 +358,59 @@ def edit_evidence(case_id:int,evidence_id:int,data:EvidenceIn,db:Session=Depends
     evidence.date_of_source=data.date_of_source;evidence.relation_type=data.relation_type;evidence.archived_media_id=data.archived_media_id
     audit(db,user.id,case_id,'evidence_edited');item.updated_at=now();db.commit()
     return evidence_view(evidence)
+
+ASSESSMENT_FIELDS=('source_identity_status','subject_expertise_status','verifiable_evidence_status','primary_source_status','date_verified_status','original_document_status','independent_corroboration_status','interests_disclosure_status','contradictions_status','evidence_relevance')
+
+def descriptive_summary(data:AssessmentIn)->str:
+    """Describe documentation only; never infer truth or compute a confidence score."""
+    core=(data.source_identity_status,data.subject_expertise_status,data.verifiable_evidence_status)
+    if any(value is None for value in core): return 'evaluation_incomplete'
+    if data.contradictions_status=='oui' or 'non' in core: return 'points_de_vigilance'
+    if all(value=='oui' for value in core) and data.evidence_relevance=='directe': return 'elements_solides'
+    return 'source_partiellement_documentee'
+
+def assessment_snapshot(assessment:SourceAssessment):
+    return {field:getattr(assessment,field) for field in ASSESSMENT_FIELDS+('assessment_summary','assessment_note')}
+
+@app.get('/api/cases/{case_id}/evidence/{evidence_id}/assessment')
+def get_assessment(case_id:int,evidence_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    get_case(case_id,db,user)
+    if not db.query(Evidence).filter_by(id=evidence_id,case_id=case_id).first(): raise HTTPException(404,'Preuve introuvable')
+    return assessment_view(db.query(SourceAssessment).filter_by(case_id=case_id,evidence_id=evidence_id).first())
+
+@app.post('/api/cases/{case_id}/evidence/{evidence_id}/assessment',status_code=201)
+def save_assessment(case_id:int,evidence_id:int,data:AssessmentIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user);only_owner(item,user)
+    if not db.query(Evidence).filter_by(id=evidence_id,case_id=case_id).first(): raise HTTPException(404,'Preuve introuvable')
+    record=db.query(SourceAssessment).filter_by(case_id=case_id,evidence_id=evidence_id).first()
+    is_new=record is None
+    if is_new: record=SourceAssessment(case_id=case_id,evidence_id=evidence_id,evaluator_id=user.id)
+    for field in ASSESSMENT_FIELDS: setattr(record,field,getattr(data,field))
+    record.assessment_note=data.assessment_note.strip();record.assessment_summary=descriptive_summary(data);record.updated_at=now()
+    if is_new: db.add(record);db.flush()
+    db.add(SourceAssessmentHistory(assessment_id=record.id,author_id=user.id,change_kind='created' if is_new else 'updated',snapshot_json=json.dumps(assessment_snapshot(record),ensure_ascii=False),justification=data.justification.strip()))
+    audit(db,user.id,case_id,'source_assessment_created' if is_new else 'source_assessment_updated',{'evidence_id':evidence_id})
+    item.updated_at=now();db.commit();return assessment_view(record)
+
+@app.patch('/api/cases/{case_id}/evidence/{evidence_id}/assessment')
+def update_assessment(case_id:int,evidence_id:int,data:AssessmentIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    return save_assessment(case_id,evidence_id,data,db,user)
+
+@app.get('/api/cases/{case_id}/evidence/{evidence_id}/assessment/history')
+def assessment_history(case_id:int,evidence_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    get_case(case_id,db,user)
+    record=db.query(SourceAssessment).filter_by(case_id=case_id,evidence_id=evidence_id).first()
+    if not record: return {'items':[]}
+    rows=db.query(SourceAssessmentHistory).filter_by(assessment_id=record.id).order_by(SourceAssessmentHistory.id.desc()).all()
+    return {'items':[{'id':row.id,'change_kind':row.change_kind,'snapshot':json.loads(row.snapshot_json),'justification':row.justification,'created_at':row.created_at,'author_name':db.get(User,row.author_id).name} for row in rows]}
+
+@app.get('/api/cases/{case_id}/assessments/summary')
+def assessments_summary(case_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    get_case(case_id,db,user)
+    evidence=db.query(Evidence).filter_by(case_id=case_id).all()
+    assessments={x.evidence_id:x for x in db.query(SourceAssessment).filter_by(case_id=case_id).all()}
+    def item(e): return evidence_view(e,assessments.get(e.id))
+    return {'favorable':[item(e) for e in evidence if e.relation_type=='appuie'], 'contraire':[item(e) for e in evidence if e.relation_type=='contredit'], 'contexte_et_incertitudes':[item(e) for e in evidence if e.relation_type=='contexte' or not assessments.get(e.id) or assessments[e.id].assessment_summary in ('evaluation_incomplete','points_de_vigilance')]}
 
 @app.post('/api/cases/{case_id}/verdict',status_code=201)
 def submit_verdict(case_id:int,data:VerdictIn,db:Session=Depends(db_session),user:User=Depends(current_user)):

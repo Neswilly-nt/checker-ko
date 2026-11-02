@@ -11,6 +11,7 @@ Checker-ko est un outil local d'aide à la vérification journalistique. Il rass
 - Comparaison avec les archives internes et recherche inversée assistée par le journaliste.
 - Carnet de preuves, conclusion humaine, relecture facultative et rapport imprimable en PDF depuis le navigateur.
 - Annuaire de cinq institutions malgaches partiellement vérifiées et référentiel des 24 régions. Les dix anciennes fiches fictives restent archivées pour les dossiers historiques.
+- Veille RSS Actualités avec une source malgache réellement vérifiée, collecte journalisée, filtres et création idempotente d'un dossier de vérification. Voir [les flux](docs/FLUX_ACTUALITES.md).
 
 Les résultats techniques et les fiches de l'annuaire servent au recoupement : aucun résultat ne constitue à lui seul une preuve de véracité. Les images de `backend/demo_assets/` sont des exemples fictifs nécessaires aux tests.
 

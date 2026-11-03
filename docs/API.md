@@ -70,6 +70,16 @@ Un média JSON contient `analysis.tool_status`, `analysis.c2pa_status`, `analysi
 - `review` exige un statut `review_requested` et un rôle `editor` distinct du propriétaire.
 - Toute décision humaine enregistre un nouvel enregistrement `verdicts` et une trace d'audit.
 - `GET /api/sources?include_archived=true` est réservé au rôle `editor` et montre les anciennes fiches fictives identifiées comme archives.
+
+## Annuaire professionnel v0.7.1
+
+- `POST /api/sources` et `PUT /api/sources/{id}` : rôle `editor`. Une fiche marquée vérifiée ou partiellement vérifiée exige `reference_url` et `last_checked_at` au format `YYYY-MM-DD`.
+- `PATCH /api/sources/{id}/archive` : rôle `editor`, corps `{"archived":true}` pour archiver ou `false` pour réactiver. La fiche et ses contacts ne sont pas supprimés.
+- `POST /api/sources/{id}/contacts` et `PUT /api/sources/{id}/contacts/{contact_id}` : rôle `editor`. Au moins une coordonnée publique, `reference_url` et `verified_at` sont obligatoires. La liste des contacts figure dans `GET /api/sources` et `GET /api/sources/{id}`.
+
+## Observations statistiques v0.7.1
+
+`POST /api/statistics/observations` est réservé au rôle `editor`. Le corps contient `publication_key`, `indicator`, `value`, `unit`, `year`, une `region` facultative et `source_locator` (page/table/figure/section). La clé sélectionne un document du catalogue contrôlé ; son titre et son URL sont stockés comme provenance. `GET /api/statistics?q=&sector=` retourne ces observations sous chaque publication. Le catalogue seul n’introduit aucune valeur numérique.
 # Catalogue documentaire
 
-`GET /api/statistics?q=&sector=` retourne les publications documentées accessibles à l’utilisateur. Chaque publication indique sa période de référence, sa couverture, ses liens et la dernière date de contrôle du lien. `observations` est vide et `observation_count` vaut zéro tant qu’aucune valeur vérifiée n’est enregistrée. Cette route ne collecte pas les documents.
+`GET /api/statistics?q=&sector=` retourne les publications documentées accessibles à l’utilisateur, avec les observations persistées sous leur publication. `observation_count` reflète le nombre de résultats après filtrage. Le catalogue ne collecte pas automatiquement les documents ni les chiffres.

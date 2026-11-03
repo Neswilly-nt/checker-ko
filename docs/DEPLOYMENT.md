@@ -1,5 +1,7 @@
 # Préparation d'un déploiement de préproduction
 
+Pour le profil de démonstration temporaire gratuit, consulter [Render + Supabase](RENDER_SUPABASE_DEMO.md). Ce profil utilise exclusivement un projet Supabase neuf et des dossiers fictifs.
+
 Cette procédure prépare une installation reproductible dans un réseau de préproduction privé. Elle ne publie pas le service et ne réutilise pas la base SQLite, les comptes de démonstration ou les fichiers présents sur un poste de développement.
 
 ## Architecture cible

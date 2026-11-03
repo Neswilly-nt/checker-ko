@@ -1,5 +1,6 @@
 from pathlib import Path
 from io import BytesIO
+from uuid import uuid4
 from PIL import Image
 from app.core import c2pa_analyze, inspect_image, MAX_BYTES
 from app.core import SessionLocal, Case
@@ -21,8 +22,14 @@ def test_auth(client,journalist):
 
 def test_demo_account_cannot_login_in_production(client,monkeypatch):
     monkeypatch.setattr('app.main.APP_ENV','production')
-    response=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
+    response=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'http://localhost:5173'},json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
     assert response.status_code==401
+
+def test_demo_seed_requires_explicit_guard(monkeypatch):
+    from app.cli import seed_demo
+    monkeypatch.setenv('APP_ENV','development')
+    monkeypatch.delenv('CHECKER_DEMO_SEED',raising=False)
+    assert seed_demo()==2
 
 def test_import_valid(client,journalist,upload_case):
     data=client.get('/api/cases/'+str(upload_case),headers=journalist).json()
@@ -132,22 +139,33 @@ def test_private_case_media_and_report_are_isolated_between_journalists(client,j
 def test_cookie_session_is_http_only_and_csrf_protected(client,monkeypatch):
     from fastapi.testclient import TestClient
     from app import main
-    from app.core import SessionLocal,User,hash_password
+    from app.core import SessionLocal,User,UserSession,Audit,hash_password
+    email=f'private-session-{uuid4().hex}@example.test'
     with SessionLocal() as db:
-        db.add(User(name='Journaliste privé',email='private-session@example.test',role='journalist',password_hash=hash_password('Secret de test 2026!')))
+        db.add(User(name='Journaliste privé',email=email,role='journalist',password_hash=hash_password('Secret de test 2026!')))
         db.commit()
     monkeypatch.setattr(main,'APP_ENV','production')
+    monkeypatch.setattr(main,'CORS_ORIGINS',['https://testserver'])
     browser=TestClient(main.app,base_url='https://testserver')
-    login=browser.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'private-session@example.test','password':'Secret de test 2026!'})
+    login=browser.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'},json={'email':email,'password':'Secret de test 2026!'})
     assert login.status_code==200 and 'access_token' not in login.json()
     cookie=login.headers['set-cookie'].lower()
     assert 'httponly' in cookie and 'secure' in cookie and 'samesite=lax' in cookie
     assert browser.get('/api/auth/me').status_code==200
     assert browser.post('/api/cases',json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
     assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1','Origin':'https://attacker.example'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
-    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==201
-    assert browser.post('/api/auth/logout',headers={'X-Checker-CSRF':'1'}).status_code==200
+    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
+    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==201
+    assert browser.post('/api/auth/logout',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'}).status_code==200
     assert browser.get('/api/auth/me').status_code==401
+    with SessionLocal() as db:
+        test_user=db.query(User).filter_by(email=email).first()
+        if test_user:
+            db.query(UserSession).filter_by(user_id=test_user.id).delete()
+            db.query(Audit).filter_by(actor_id=test_user.id).delete()
+            db.query(Case).filter_by(owner_id=test_user.id).delete()
+            db.delete(test_user)
+            db.commit()
 
 def test_review_optional_and_by_other_user(client,journalist,editor,upload_case):
     pre=client.post(f'/api/cases/{upload_case}/request-review',headers=journalist)

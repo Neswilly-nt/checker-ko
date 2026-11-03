@@ -360,7 +360,7 @@ body{background:#e8f8fb;color:#203044}
 body{background:#f2f5fa;color:#142d43}
 .editorial-shell{position:relative;min-height:100vh;padding:0;background:#f2f5fa;isolation:isolate}
 .editorial-shell .sidebar{z-index:20;left:0;top:0;width:clamp(280px,18.6vw,340px);height:100vh;padding:38px 15px 20px 16px;background:#fff;border-right:1px solid #dce4ef;box-shadow:4px 0 18px rgba(29,55,84,.07);overflow:hidden}
-.editorial-shell .sidebar:before{content:"";position:absolute;z-index:0;pointer-events:none;inset:auto 0 0;width:100%;height:39%;background:linear-gradient(0deg,rgba(255,255,255,.08),rgba(255,255,255,.54)),url('/Espace%20M%C3%A9dia%20Num%C3%A9rique.jfif') center bottom/cover no-repeat}
+.editorial-shell .sidebar:before{content:"";position:absolute;z-index:0;pointer-events:none;inset:auto 0 0;width:100%;height:31%;background:linear-gradient(0deg,rgba(255,255,255,.68),rgba(255,255,255,.9)),url('/Espace%20M%C3%A9dia%20Num%C3%A9rique.jfif') center bottom/cover no-repeat;opacity:.68}
 .editorial-shell .sidebar:after{display:none}
 .editorial-shell .side-top,.editorial-shell .side-caption,.editorial-shell .sidebar nav,.editorial-shell .side-bottom{position:relative;z-index:1}
 .editorial-shell .side-top{padding:0 12px 23px;border-bottom:1px solid #dfe6ef}

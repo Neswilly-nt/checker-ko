@@ -49,6 +49,14 @@ def _supabase_settings() -> tuple[str, str]:
     return base, service_key
 
 
+def _supabase_headers(api_key: str) -> dict[str, str]:
+    """Send current API keys as apikey; only legacy JWT keys belong in Bearer."""
+    headers = {'apikey': api_key}
+    if not api_key.startswith(('sb_secret_', 'sb_publishable_')):
+        headers['Authorization'] = f'Bearer {api_key}'
+    return headers
+
+
 def put(key: str, data: bytes, content_type: str) -> None:
     key = _key(key)
     if BACKEND == 'local':
@@ -59,10 +67,9 @@ def put(key: str, data: bytes, content_type: str) -> None:
     base, secret = _supabase_settings()
     url = f'{base}/storage/v1/object/{quote(BUCKET, safe="")}/{quote(key, safe="/")}'
     try:
-        response = httpx.post(url, content=data, headers={
-            'Authorization': f'Bearer {secret}', 'apikey': secret,
-            'Content-Type': content_type, 'x-upsert': 'false',
-        }, timeout=30)
+        headers = _supabase_headers(secret)
+        headers.update({'Content-Type': content_type, 'x-upsert': 'false'})
+        response = httpx.post(url, content=data, headers=headers, timeout=30)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise StorageError('Supabase Storage upload failed') from exc
@@ -80,7 +87,7 @@ def read(key: str) -> bytes:
     base, secret = _supabase_settings()
     url = f'{base}/storage/v1/object/{quote(BUCKET, safe="")}/{quote(key, safe="/")}'
     try:
-        response = httpx.get(url, headers={'Authorization': f'Bearer {secret}', 'apikey': secret}, timeout=30)
+        response = httpx.get(url, headers=_supabase_headers(secret), timeout=30)
         if response.status_code == 404:
             raise HTTPException(404, 'Média introuvable')
         response.raise_for_status()
@@ -99,9 +106,7 @@ def delete(key: str) -> None:
     base, secret = _supabase_settings()
     url = f'{base}/storage/v1/object/{quote(BUCKET, safe="")}'
     try:
-        response = httpx.delete(url, json={'prefixes': [key]}, headers={
-            'Authorization': f'Bearer {secret}', 'apikey': secret,
-        }, timeout=30)
+        response = httpx.delete(url, json={'prefixes': [key]}, headers=_supabase_headers(secret), timeout=30)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise StorageError('Supabase Storage deletion failed') from exc
@@ -130,9 +135,10 @@ def ensure_configured() -> None:
     if BACKEND == 'supabase':
         try:
             base, secret = _supabase_settings()
-            response = httpx.get(f'{base}/storage/v1/bucket/{quote(BUCKET, safe="")}', headers={
-                'Authorization': f'Bearer {secret}', 'apikey': secret,
-            }, timeout=15)
+            response = httpx.get(
+                f'{base}/storage/v1/bucket/{quote(BUCKET, safe="")}',
+                headers=_supabase_headers(secret), timeout=15,
+            )
             response.raise_for_status()
             if response.json().get('public') is not False:
                 raise StorageError('The configured Supabase Storage bucket must be private')

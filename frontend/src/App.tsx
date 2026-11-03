@@ -111,7 +111,7 @@ function Authenticated({user,onLogout}:{user:User;onLogout:()=>void}){
  return <Shell user={user} onLogout={onLogout}><Routes><Route path="/dashboard" element={<Dashboard/>}/><Route path="/verifier" element={<Verify/>}/><Route path="/actualites" element={<News user={user}/>}/><Route path="/dossiers" element={<Cases/>}/><Route path="/dossiers/:id" element={<CaseWorkspace user={user}/>}/><Route path="/dossiers/:id/rapport" element={<CaseReport/>}/><Route path="/sources" element={<SourcesDirectory user={user}/>}/><Route path="*" element={<Navigate to="/dashboard" replace/>}/></Routes></Shell>
 }
 function Root(){const[user,setUser]=useState<User|null>(null);const[initializing,setInitializing]=useState(true);
- useEffect(()=>{try{localStorage.removeItem('checker_ko_demo_token')}catch{}api<User>('/auth/me').then(setUser).catch(()=>setUser(null)).finally(()=>setInitializing(false))},[]);
+ useEffect(()=>{try{localStorage.removeItem('checker_ko_demo_token')}catch{}let active=true;const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),6000);api<User>('/auth/me',{signal:controller.signal}).then(value=>{if(active)setUser(value)}).catch(()=>{if(active)setUser(null)}).finally(()=>{window.clearTimeout(timeout);if(active)setInitializing(false)});return()=>{active=false;window.clearTimeout(timeout);controller.abort()}},[]);
  const logout=()=>{void api('/auth/logout',{method:'POST'}).catch(()=>{}).finally(()=>setUser(null))};
  if(initializing)return <div className="startup"><Brand/><Loading/></div>;
  return user?<Authenticated user={user} onLogout={logout}/>:<Login onLogin={setUser}/>;

@@ -399,8 +399,8 @@ body{background:#f2f5fa;color:#142d43}
 .dashboard-heading{display:flex;align-items:center;justify-content:space-between;gap:22px;margin:0 0 26px}
 .dashboard-heading h1{margin:0 0 5px;color:#075b43;font-size:clamp(36px,3.2vw,50px);font-weight:800;line-height:1.08;letter-spacing:-.045em}
 .dashboard-heading p{margin:0;color:#152d4c;font-size:18px;line-height:1.45}
-.dashboard-heading .btn{min-height:68px;padding:14px 28px;border-radius:999px;background:linear-gradient(110deg,#079d3d,#00662b);color:#fff;font-size:17px;box-shadow:0 10px 22px rgba(0,111,45,.22)}
-.dashboard-heading .btn:hover:not(:disabled){background:linear-gradient(110deg,#078d39,#005522)}
+.dashboard-heading .btn{min-height:68px;padding:14px 28px;border-radius:999px;background:linear-gradient(110deg,#209d62,#117347);color:#fff;font-size:17px;font-weight:650;box-shadow:0 10px 22px rgba(0,111,45,.16)}
+.dashboard-heading .btn:hover:not(:disabled){background:linear-gradient(110deg,#198b55,#0d633d)}
 .dashboard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:0 0 28px}
 .editorial-shell .dashboard-stat{min-height:88px;display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:19px;padding:15px 20px;border:1px solid #dfe5ef;border-left:4px solid #0daa39;border-radius:19px;background:#fff;color:#172d49;box-shadow:0 9px 21px rgba(35,52,87,.12)}
 .editorial-shell .dashboard-stat-icon{width:50px;height:50px;border-radius:50%;background:#dcf7bc!important;color:#075e39!important}
@@ -568,7 +568,7 @@ body{background:#f2f5fa;color:#142d43}
 .editorial-shell .page{padding:30px clamp(18px,3vw,42px) 36px}
 .editorial-shell .page-heading{margin-bottom:20px}
 .editorial-shell .page-heading p,.editorial-shell .news-sync,.editorial-shell .source-count{font-size:14px}
-.editorial-shell .btn{min-height:42px;font-size:14px}
+.editorial-shell .btn{min-height:42px;font-size:14px;font-weight:650}
 .editorial-shell .side-link{font-size:14px}
 .editorial-shell .dashboard-case-main strong,.editorial-shell .case-desc strong,.editorial-shell .news-row h2{font-size:15px}
 .editorial-shell .dashboard-case-main small,.editorial-shell .case-desc small,.editorial-shell .dashboard-case-type,.editorial-shell .news-meta,.editorial-shell .news-row a,.editorial-shell .source-row-meta span{font-size:13px}

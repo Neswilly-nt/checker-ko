@@ -36,6 +36,7 @@ def test_import_valid(client,journalist,upload_case):
     listed=client.get('/api/cases',headers=journalist).json()
     assert next(item for item in listed['items'] if item['id']==upload_case)['content_type']=='photo'
     assert listed['total']>=listed['concluded']
+    assert listed['latest_unfinished']['id']==upload_case
     assert data['media']['sha256'] and len(data['media']['sha256'])==64
     assert data['media']['mime_type']=='image/jpeg'
     assert data['media']['width']==750

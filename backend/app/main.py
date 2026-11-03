@@ -283,10 +283,12 @@ def list_cases(q:str='',db:Session=Depends(db_session),user:User=Depends(current
     if q: stmt=stmt.filter(Case.claim_text.ilike(f'%{q[:100]}%'))
     total=stmt.count()
     concluded=stmt.filter(Case.id.in_(db.query(Verdict.case_id))).count()
+    latest_unfinished=stmt.filter(~Case.status.in_(['concluded','reviewed'])).order_by(Case.updated_at.desc(),Case.id.desc()).first()
     cases=stmt.order_by(Case.created_at.desc()).limit(100).all()
     video_ids={row[0] for row in db.query(Video.case_id).filter(Video.case_id.in_([c.id for c in cases])).all()} if cases else set()
     return {'items':[{'id':c.id,'claim_text':c.claim_text or 'Image sans affirmation','status':c.status,'sector':c.sector,'region':c.region,'content_type':'video' if c.id in video_ids else 'photo' if c.asset_id else 'texte','created_at':c.created_at,'updated_at':c.updated_at} for c in cases],
-        'total':total,'concluded':concluded}
+        'total':total,'concluded':concluded,
+        'latest_unfinished':{'id':latest_unfinished.id,'claim_text':latest_unfinished.claim_text or 'Image sans affirmation','status':latest_unfinished.status,'updated_at':latest_unfinished.updated_at} if latest_unfinished else None}
 
 @app.post('/api/media/upload',status_code=201)
 async def upload(file:UploadFile=File(...), caption:str=Form(''),source_url:str=Form(''),sector:str=Form('autre'),region:str=Form(''),db:Session=Depends(db_session),user:User=Depends(current_user)):

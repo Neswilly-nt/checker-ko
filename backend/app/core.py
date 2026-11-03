@@ -22,6 +22,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 import jwt
 from .regions import NATIONAL
 from .source_catalog import CATALOG, CHECKED_AT
+from . import storage
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_DIR = Path(os.environ.get('CHECKER_DATA_DIR', str(ROOT / 'private_data'))).resolve()
@@ -29,7 +30,9 @@ BASE_DIR.mkdir(parents=True, exist_ok=True)
 IMAGES_DIR = BASE_DIR / 'images'
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 DB_URL = os.environ.get('DATABASE_URL', f'sqlite:///{(BASE_DIR / "checker.db").as_posix()}')
-engine = create_engine(DB_URL, connect_args={'check_same_thread': False} if DB_URL.startswith('sqlite') else {}, pool_pre_ping=True)
+engine = create_engine(DB_URL, connect_args={'check_same_thread': False} if DB_URL.startswith('sqlite') else {}, pool_pre_ping=True,
+                       pool_size=int(os.environ.get('DB_POOL_SIZE','2')), max_overflow=int(os.environ.get('DB_MAX_OVERFLOW','0')) if not DB_URL.startswith('sqlite') else 10,
+                       pool_recycle=int(os.environ.get('DB_POOL_RECYCLE_SECONDS','180')))
 if DB_URL.startswith('sqlite'):
     @event.listens_for(engine, 'connect')
     def enable_foreign_keys(dbapi_conn, _):
@@ -47,6 +50,15 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(250), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(300))
     role: Mapped[str] = mapped_column(String(30), default='journalist')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class UserSession(Base):
+    __tablename__ = 'user_sessions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class Media(Base):
@@ -278,6 +290,7 @@ class NewsSync(Base):
 APP_ENV = os.environ.get('APP_ENV', 'development')
 if APP_ENV not in ('development', 'test', 'production'):
     raise RuntimeError('APP_ENV doit valoir development, test ou production')
+DEMO_MODE = os.environ.get('CHECKER_DEMO_MODE','').strip().lower()=='true'
 DEMO_USERS = [('journaliste@checker.local', 'Journaliste Démo', 'journalist', 'Journaliste2026!'), ('redaction@checker.local', 'Responsable Rédaction', 'editor', 'Redaction2026!')]
 
 def hash_password(password):
@@ -295,6 +308,8 @@ def verify_password(password, encoded):
     except (ValueError, TypeError): return False
 
 SECRET = os.environ.get('CHECKER_SECRET', '')
+if APP_ENV == 'production' and len(SECRET) < 32:
+    raise RuntimeError('CHECKER_SECRET doit être configuré avec au moins 32 caractères en production')
 if not SECRET:
     # local demo only, persisted across restarts for stable login; never print or ship it.
     secret_path = BASE_DIR / '.local_secret'
@@ -305,17 +320,36 @@ if not SECRET:
         try: os.chmod(secret_path,0o600)
         except OSError: pass
 
-def make_token(user):
-    return jwt.encode({'sub':str(user.id), 'exp':now()+timedelta(hours=4)},SECRET, algorithm='HS256')
+def make_token(db,user):
+    session_id=uuid4().hex
+    issued=now()
+    db.query(UserSession).filter(UserSession.expires_at<=issued).delete(synchronize_session=False)
+    expires=issued+timedelta(hours=4)
+    db.add(UserSession(jti=session_id,user_id=user.id,expires_at=expires))
+    db.flush()
+    return jwt.encode({'sub':str(user.id),'sid':session_id,'iat':issued,'exp':expires},SECRET,algorithm='HS256')
 
 def get_user(db, token):
     try:
         claims=jwt.decode(token,SECRET,algorithms=['HS256'])
         user=db.get(User,int(claims['sub']))
         if not user: raise ValueError('user')
+        session=db.query(UserSession).filter_by(jti=claims['sid'],user_id=user.id,revoked_at=None).first()
+        if not session or session.expires_at.replace(tzinfo=timezone.utc)<=now(): raise ValueError('session')
         return user
     except (jwt.PyJWTError, ValueError, TypeError, KeyError):
         raise HTTPException(status_code=401,detail='Session invalide ou expirée')
+
+def revoke_token(db,token):
+    if not token:return
+    try:
+        claims=jwt.decode(token,SECRET,algorithms=['HS256'])
+        session=db.query(UserSession).filter_by(jti=claims.get('sid'),revoked_at=None).first()
+        if session:
+            session.revoked_at=now()
+            db.commit()
+    except (jwt.PyJWTError,TypeError,KeyError):
+        db.rollback()
 
 FORMATS={'JPEG':('image/jpeg','.jpg'), 'PNG':('image/png','.png'), 'WEBP':('image/webp','.webp')}
 MAX_BYTES=10*1024*1024
@@ -425,13 +459,18 @@ def valid_url(value):
 
 def store_media(db, owner_id, data, filename, is_archive=False, archive_title=None, archive_source_url=None, archive_date=None):
     properties=inspect_image(data)
-    path=IMAGES_DIR/(uuid4().hex+properties['ext'])
-    path.write_bytes(data)
-    media=Media(owner_id=owner_id,original_filename=Path(filename).name[:255],private_path=path.name, mime_type=properties['mime'],size_bytes=properties['size'],sha256=properties['sha256'],phash=properties['phash'],width=properties['width'],height=properties['height'],exif_json=json.dumps(properties['exif']),is_archive=is_archive,archive_title=archive_title,archive_source_url=archive_source_url,archive_date=archive_date)
-    db.add(media); db.flush()
-    tool,status,claims,warnings=c2pa_analyze(path)
-    db.add(Analysis(asset_id=media.id,tool_status=tool,c2pa_status=status,c2pa_claim_json=json.dumps(claims),warnings_json=json.dumps(warnings,ensure_ascii=False)))
-    return media
+    key='images/'+uuid4().hex+properties['ext']
+    storage.put(key,data,properties['mime'])
+    try:
+        media=Media(owner_id=owner_id,original_filename=Path(filename).name[:255],private_path=key, mime_type=properties['mime'],size_bytes=properties['size'],sha256=properties['sha256'],phash=properties['phash'],width=properties['width'],height=properties['height'],exif_json=json.dumps(properties['exif']),is_archive=is_archive,archive_title=archive_title,archive_source_url=archive_source_url,archive_date=archive_date)
+        db.add(media); db.flush()
+        with storage.materialize(key) as path:
+            tool,status,claims,warnings=c2pa_analyze(path)
+        db.add(Analysis(asset_id=media.id,tool_status=tool,c2pa_status=status,c2pa_claim_json=json.dumps(claims),warnings_json=json.dumps(warnings,ensure_ascii=False)))
+        return media
+    except Exception:
+        storage.delete(key)
+        raise
 
 def media_path(media):
     # Filename is generated by the backend and must be confined to private directory.
@@ -510,13 +549,16 @@ def init_db():
                             if field not in existing:
                                 connection.execute(f'ALTER TABLE {table} ADD COLUMN {field} {kind}')
                     connection.commit()
-    Base.metadata.create_all(engine)
+    # SQLite remains the zero-configuration local backend. PostgreSQL schemas are
+    # managed by Alembic so production startup never creates or alters tables.
+    if DB_URL.startswith('sqlite'):
+        Base.metadata.create_all(engine)
     with SessionLocal() as db:
         for email,name,role,password in (DEMO_USERS if APP_ENV == 'development' else []):
             if not db.query(User).filter_by(email=email).first():
                 db.add(User(name=name,email=email,role=role,password_hash=hash_password(password)))
         # Sources are application-controlled; users cannot submit arbitrary collection URLs.
-        feeds=[
+        feeds=[] if DEMO_MODE else [
             ('madagascar-tribune','Madagascar Tribune','https://www.madagascar-tribune.com/spip.php?page=backend'),
             ('midi-madagasikara','Midi Madagasikara','https://midi-madagasikara.mg/feed/'),
         ]
@@ -526,12 +568,13 @@ def init_db():
                     sectors_json='["autre"]',checked_at='2026-11-03',
                     reuse_terms='Consulter les conditions du site éditeur avant toute republication.',enabled=True))
         db.commit()
-        for old in db.query(DirectorySource).filter_by(demo_only=True,archived=False).all():
-            old.archived=True
-        for entry in CATALOG:
-            if db.query(DirectorySource).filter_by(source_key=entry['key']).first(): continue
-            if db.query(DirectorySource).filter_by(website_url=entry['website_url'],demo_only=False).first(): continue
-            db.add(DirectorySource(organization=entry['organization'],acronym=entry['acronym'],organization_type=entry['kind'],sector=entry['sector'],description=entry['description'],website_url=entry['website_url'],reference_url=entry['reference_url'],resources_json=json.dumps(entry['resources']),geographic_scope='Tout Madagascar',region=NATIONAL,last_checked_at=CHECKED_AT,verification_status='partiellement_verifiees',source_key=entry['key'],demo_only=False,archived=False))
+        if not DEMO_MODE:
+            for old in db.query(DirectorySource).filter_by(demo_only=True,archived=False).all():
+                old.archived=True
+            for entry in CATALOG:
+                if db.query(DirectorySource).filter_by(source_key=entry['key']).first(): continue
+                if db.query(DirectorySource).filter_by(website_url=entry['website_url'],demo_only=False).first(): continue
+                db.add(DirectorySource(organization=entry['organization'],acronym=entry['acronym'],organization_type=entry['kind'],sector=entry['sector'],description=entry['description'],website_url=entry['website_url'],reference_url=entry['reference_url'],resources_json=json.dumps(entry['resources']),geographic_scope='Tout Madagascar',region=NATIONAL,last_checked_at=CHECKED_AT,verification_status='partiellement_verifiees',source_key=entry['key'],demo_only=False,archived=False))
         db.commit()
         # Seed archived photos once, shared by all logged-in journalists for demonstration only.
         if APP_ENV == 'development' and not db.query(Media).filter_by(is_archive=True).first():

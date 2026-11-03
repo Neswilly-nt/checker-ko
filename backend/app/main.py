@@ -7,39 +7,96 @@ import hashlib
 import subprocess
 import tempfile
 import re
+import logging
+import time
+from contextlib import asynccontextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header, Query
+from urllib.parse import urlsplit
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header, Query, Cookie, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from sqlalchemy import or_
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from .core import (Analysis, Case, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
-    now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
-    evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
+    now, init_db, DEMO_USERS, DEMO_MODE, make_token, revoke_token, get_user, verify_password, store_media, media_view,
+    evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
+from . import storage
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.8.0')
-app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
+@asynccontextmanager
+async def lifespan(_app):
+    startup()
+    yield
 
-@app.on_event('startup')
-def startup(): init_db()
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.9.0',lifespan=lifespan)
+SESSION_COOKIE='checker_ko_session'
+CSRF_HEADER='x-checker-csrf'
+COOKIE_SAMESITE=os.environ.get('CHECKER_COOKIE_SAMESITE','lax').strip().lower()
+logging.basicConfig(level=os.environ.get('LOG_LEVEL','INFO').upper(),format='%(asctime)s %(levelname)s %(name)s %(message)s')
+request_logger=logging.getLogger('checker-ko.requests')
+CORS_ORIGINS=[value.strip().rstrip('/') for value in os.environ.get('CHECKER_CORS_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',') if value.strip()]
+app.add_middleware(CORSMiddleware,allow_origins=CORS_ORIGINS,allow_credentials=True,allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','X-Checker-CSRF'])
+
+@app.middleware('http')
+async def browser_session_protection(request:Request,call_next):
+    started=time.perf_counter()
+    unsafe=request.method not in ('GET','HEAD','OPTIONS','TRACE')
+    login=request.url.path=='/api/auth/login' and request.method=='POST'
+    cookie_session=bool(request.cookies.get(SESSION_COOKIE))
+    csrf_required=login or unsafe and cookie_session
+    origin=request.headers.get('origin')
+    origin_invalid=(origin.rstrip('/') not in CORS_ORIGINS) if origin else APP_ENV=='production'
+    if csrf_required and (request.headers.get(CSRF_HEADER)!='1' or origin_invalid):
+        request_logger.warning('method=%s path=%s status=403 duration_ms=%.1f',request.method,request.url.path,(time.perf_counter()-started)*1000)
+        return Response('Request origin not allowed',status_code=403)
+    response=await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers.setdefault('Cache-Control','no-store')
+        response.headers.setdefault('X-Content-Type-Options','nosniff')
+        response.headers.setdefault('Referrer-Policy','strict-origin-when-cross-origin')
+        response.headers.setdefault('X-Frame-Options','DENY')
+        if APP_ENV=='production':
+            response.headers.setdefault('Content-Security-Policy',"default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+    if request.url.path.startswith('/api/'):
+        request_logger.info('method=%s path=%s status=%s duration_ms=%.1f',request.method,request.url.path,response.status_code,(time.perf_counter()-started)*1000)
+    return response
+
+def startup():
+    if APP_ENV=='production':
+        database_url=os.environ.get('DATABASE_URL','')
+        if not database_url.startswith('postgresql+psycopg://'):
+            raise RuntimeError('DATABASE_URL doit pointer vers PostgreSQL en production')
+        if make_url(database_url).query.get('sslmode') not in ('require','verify-ca','verify-full'):
+            raise RuntimeError('DATABASE_URL doit imposer PostgreSQL TLS avec sslmode=require ou une validation de certificat')
+        if not os.environ.get('CHECKER_DATA_DIR') or not Path(os.environ.get('CHECKER_DATA_DIR','')).expanduser().is_absolute():
+            raise RuntimeError('CHECKER_DATA_DIR must be an absolute private working directory')
+        if not os.environ.get('CHECKER_CORS_ORIGINS') or any(urlsplit(origin).scheme!='https' or not urlsplit(origin).netloc or urlsplit(origin).path not in ('','/') or urlsplit(origin).query or urlsplit(origin).fragment or '*' in origin for origin in CORS_ORIGINS):
+            raise RuntimeError('CHECKER_CORS_ORIGINS must contain only allowed HTTPS origins')
+        storage.ensure_configured()
+        if COOKIE_SAMESITE not in ('lax','none') or (COOKIE_SAMESITE=='none' and not os.environ.get('CHECKER_CORS_ORIGINS')):
+            raise RuntimeError('CHECKER_COOKIE_SAMESITE must be lax or none; none requires exact HTTPS CORS origins')
+    init_db()
 
 def db_session():
     with SessionLocal() as db: yield db
 
-def current_user(authorization:str|None=Header(default=None),db:Session=Depends(db_session)):
-    if not authorization or not authorization.startswith('Bearer '):
+def current_user(session_token:str|None=Cookie(default=None,alias=SESSION_COOKIE),authorization:str|None=Header(default=None),db:Session=Depends(db_session)):
+    token=session_token
+    if not token and APP_ENV!='production' and authorization and authorization.startswith('Bearer '):
+        token=authorization.removeprefix('Bearer ')
+    if not token:
         raise HTTPException(401,'Authentification requise')
-    return get_user(db,authorization.removeprefix('Bearer '))
+    return get_user(db,token)
 
 def get_case(case_id:int,db:Session,user:User):
     item=db.get(Case,case_id)
@@ -154,12 +211,25 @@ def checked_region(value):
     except ValueError as exc:raise HTTPException(422,str(exc)) from exc
 
 @app.post('/api/auth/login')
-def login(data:LoginIn,db:Session=Depends(db_session)):
+def login(data:LoginIn,response:Response,db:Session=Depends(db_session)):
     user=db.query(User).filter_by(email=data.email.lower().strip()).first()
     if APP_ENV == 'production' and user and user.email in {entry[0] for entry in DEMO_USERS}:
         raise HTTPException(401,'Identifiants incorrects')
     if not user or not verify_password(data.password,user.password_hash): raise HTTPException(401,'Identifiants incorrects')
-    return {'access_token':make_token(user),'token_type':'bearer','user':user_view(user)}
+    token=make_token(db,user)
+    db.commit()
+    secure=APP_ENV=='production' or os.environ.get('CHECKER_COOKIE_SECURE','').lower()=='true'
+    response.set_cookie(SESSION_COOKIE,token,max_age=4*60*60,httponly=True,secure=secure,samesite=COOKIE_SAMESITE,path='/api')
+    result={'user':user_view(user)}
+    if APP_ENV!='production': result.update({'access_token':token,'token_type':'bearer'})
+    return result
+
+@app.post('/api/auth/logout')
+def logout(response:Response,session_token:str|None=Cookie(default=None,alias=SESSION_COOKIE),db:Session=Depends(db_session)):
+    revoke_token(db,session_token)
+    secure=APP_ENV=='production' or os.environ.get('CHECKER_COOKIE_SECURE','').lower()=='true'
+    response.delete_cookie(SESSION_COOKIE,path='/api',httponly=True,secure=secure,samesite=COOKIE_SAMESITE)
+    return {'ok':True}
 
 @app.get('/api/auth/me')
 def me(user:User=Depends(current_user)): return user_view(user)
@@ -224,10 +294,9 @@ async def upload(file:UploadFile=File(...), caption:str=Form(''),source_url:str=
     if len(caption)>8000 or len(sector)>80: raise HTTPException(422,'Données trop longues')
     chunks=await file.read(MAX_BYTES+1)
     if len(chunks)>MAX_BYTES: raise HTTPException(413,'Image de plus de 10 Mo refusée')
-    new_path=None
+    media=None
     try:
         media=store_media(db,user.id,chunks,file.filename or 'image')
-        new_path=media_path(media)
         item=Case(asset_id=media.id,owner_id=user.id,claim_text=caption.strip(),original_source_url=source_url or None,sector=sector,region=checked_region(region),status='en_cours')
         db.add(item);db.flush()
         audit(db,user.id,item.id,'upload',{'asset_id':media.id})
@@ -235,7 +304,7 @@ async def upload(file:UploadFile=File(...), caption:str=Form(''),source_url:str=
         return {'id':item.id,'message':'Dossier et analyse enregistrés','media_id':media.id}
     except Exception:
         db.rollback()
-        if new_path is not None: new_path.unlink(missing_ok=True)
+        if media is not None: storage.delete(media.private_path)
         raise
 
 @app.post('/api/cases',status_code=201)
@@ -295,9 +364,10 @@ async def upload_video(file:UploadFile=File(...),caption:str=Form(''),source_url
     if len(data)>VIDEO_MAX_BYTES: raise HTTPException(413,'Vidéo trop volumineuse')
     if len(data)<12 or data[4:8]!=b'ftyp': raise HTTPException(415,'Fichier MP4 invalide')
     videos_dir=BASE_DIR/'videos';videos_dir.mkdir(exist_ok=True)
-    path=videos_dir/(uuid4().hex+'.mp4')
+    video_key='videos/'+uuid4().hex+'.mp4'
+    path=videos_dir/Path(video_key).name
     path.write_bytes(data)
-    frame_paths=[]
+    frame_keys=[]
     try:
         result=subprocess.run([ffprobe,'-v','error','-show_entries','format=duration:stream=codec_type,width,height','-of','json',str(path)],capture_output=True,text=True,timeout=15,shell=False)
         if result.returncode: raise HTTPException(415,'Vidéo MP4 illisible')
@@ -315,19 +385,21 @@ async def upload_video(file:UploadFile=File(...),caption:str=Form(''),source_url
             if extract.returncode or not extract.stdout: raise HTTPException(422,'Extraction des images-clés impossible')
             frame=store_media(db,user.id,extract.stdout,f'image-cle-{index+1}.jpg')
             frame.video_timestamp_seconds=round(at,3)
-            frame_paths.append(media_path(frame));frame_ids.append(frame.id)
+            frame_keys.append(frame.private_path);frame_ids.append(frame.id)
+        storage.put(video_key,data,'video/mp4')
         item=Case(asset_id=frame_ids[0],owner_id=user.id,claim_text=caption.strip(),original_source_url=source_url or None,sector=sector,region=checked_region(region),status='en_cours')
         db.add(item);db.flush()
-        db.add(Video(case_id=item.id,private_path=path.name,original_filename=Path(file.filename or 'video.mp4').name[:255],sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data),duration_seconds=duration,width=width,height=height,frame_ids_json=json.dumps(frame_ids)))
+        db.add(Video(case_id=item.id,private_path=video_key,original_filename=Path(file.filename or 'video.mp4').name[:255],sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data),duration_seconds=duration,width=width,height=height,frame_ids_json=json.dumps(frame_ids)))
         audit(db,user.id,item.id,'video_uploaded',{'frame_ids':frame_ids});db.commit()
+        if storage.BACKEND=='supabase': path.unlink(missing_ok=True)
         return {'id':item.id,'frame_ids':frame_ids}
     except (subprocess.TimeoutExpired,OSError,ValueError,KeyError,json.JSONDecodeError) as exc:
-        db.rollback();path.unlink(missing_ok=True)
-        for frame_path in frame_paths:frame_path.unlink(missing_ok=True)
+        db.rollback();path.unlink(missing_ok=True);storage.delete(video_key)
+        for frame_key in frame_keys:storage.delete(frame_key)
         raise HTTPException(422,'Analyse vidéo impossible ou délai dépassé') from exc
     except Exception:
-        db.rollback();path.unlink(missing_ok=True)
-        for frame_path in frame_paths:frame_path.unlink(missing_ok=True)
+        db.rollback();path.unlink(missing_ok=True);storage.delete(video_key)
+        for frame_key in frame_keys:storage.delete(frame_key)
         raise
 
 @app.get('/api/cases/{case_id}')
@@ -378,7 +450,8 @@ def analyze(case_id:int,db:Session=Depends(db_session),user:User=Depends(current
     item=get_case(case_id,db,user); only_owner(item,user)
     if item.asset_id is None: raise HTTPException(422,'Ce dossier ne contient pas de photo')
     media=db.get(Media,item.asset_id)
-    tool,status,claims,warnings=c2pa_analyze(media_path(media))
+    with storage.materialize(media.private_path) as media_file:
+        tool,status,claims,warnings=c2pa_analyze(media_file)
     record=db.query(Analysis).filter_by(asset_id=media.id).first()
     record.tool_status=tool;record.c2pa_status=status
     record.c2pa_claim_json=json.dumps(claims,ensure_ascii=False);record.warnings_json=json.dumps(warnings,ensure_ascii=False);record.analyzed_at=now()
@@ -538,7 +611,7 @@ def preview(media_id:int,db:Session=Depends(db_session),user:User=Depends(curren
                     break
         if not linked or user.role!='editor' or linked.status not in ('review_requested','reviewed','changes_requested'):
             raise HTTPException(403,'Accès refusé au média')
-    with Image.open(media_path(media)) as im:
+    with Image.open(BytesIO(storage.read(media.private_path))) as im:
         im=ImageOps.exif_transpose(im)
         im.thumbnail((1200,800))
         if im.mode not in ('RGB','L'): im=im.convert('RGB')
@@ -595,6 +668,7 @@ def sources(sector:str='',region:str='',organization_type:str='',q:str='',includ
 @app.get('/api/statistics')
 def statistical_publications(sector:str='',q:str='',db:Session=Depends(db_session),user:User=Depends(current_user)):
     """Publication references and persisted observations with their exact provenance."""
+    if DEMO_MODE:return {'items':[],'observation_count':0}
     query=q.strip().casefold()[:100]
     items=[]
     for publication in PUBLICATIONS:

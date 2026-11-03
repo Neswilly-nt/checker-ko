@@ -1,5 +1,6 @@
 from pathlib import Path
 from io import BytesIO
+from uuid import uuid4
 from PIL import Image
 from app.core import c2pa_analyze, inspect_image, MAX_BYTES
 from app.core import SessionLocal, Case
@@ -16,13 +17,19 @@ def test_health(client):
 
 def test_auth(client,journalist):
     assert client.get('/api/auth/me').status_code==401
-    assert client.post('/api/auth/login',json={'email':'journaliste@checker.local','password':'wrong'}).status_code==401
+    assert client.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'journaliste@checker.local','password':'wrong'}).status_code==401
     assert client.get('/api/auth/me',headers=journalist).json()['role']=='journalist'
 
 def test_demo_account_cannot_login_in_production(client,monkeypatch):
     monkeypatch.setattr('app.main.APP_ENV','production')
-    response=client.post('/api/auth/login',json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
+    response=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'http://localhost:5173'},json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
     assert response.status_code==401
+
+def test_demo_seed_requires_explicit_guard(monkeypatch):
+    from app.cli import seed_demo
+    monkeypatch.setenv('APP_ENV','development')
+    monkeypatch.delenv('CHECKER_DEMO_SEED',raising=False)
+    assert seed_demo()==2
 
 def test_import_valid(client,journalist,upload_case):
     data=client.get('/api/cases/'+str(upload_case),headers=journalist).json()
@@ -112,7 +119,53 @@ def test_access_control(client,journalist,editor,upload_case):
     item=client.get(f'/api/cases/{upload_case}',headers=journalist).json()
     assert client.get(f'/api/cases/{upload_case}',headers=editor).status_code==403
     assert client.get(f'/api/media/{item["media"]["id"]}/preview',headers=editor).status_code==403
+    assert client.get(f'/api/cases/{upload_case}/report',headers=editor).status_code==403
     assert client.post(f'/api/cases/{upload_case}/verdict',headers=editor,json={'verdict':'Faux','reasoning':'Cette justification n’est pas autorisée'}).status_code==403
+
+def test_private_case_media_and_report_are_isolated_between_journalists(client,journalist,upload_case):
+    from app.core import SessionLocal,User,hash_password
+    with SessionLocal() as db:
+        db.add(User(name='Autre journaliste',email='other-journalist@example.test',role='journalist',password_hash=hash_password('Autre mot de passe fort 2026!')))
+        db.commit()
+    login=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'other-journalist@example.test','password':'Autre mot de passe fort 2026!'})
+    assert login.status_code==200
+    client.cookies.clear()
+    other={'Authorization':'Bearer '+login.json()['access_token']}
+    item=client.get(f'/api/cases/{upload_case}',headers=journalist).json()
+    assert client.get(f'/api/cases/{upload_case}',headers=other).status_code==403
+    assert client.get(f'/api/media/{item["media"]["id"]}/preview',headers=other).status_code==403
+    assert client.get(f'/api/cases/{upload_case}/report',headers=other).status_code==403
+
+def test_cookie_session_is_http_only_and_csrf_protected(client,monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main
+    from app.core import SessionLocal,User,UserSession,Audit,hash_password
+    email=f'private-session-{uuid4().hex}@example.test'
+    with SessionLocal() as db:
+        db.add(User(name='Journaliste privé',email=email,role='journalist',password_hash=hash_password('Secret de test 2026!')))
+        db.commit()
+    monkeypatch.setattr(main,'APP_ENV','production')
+    monkeypatch.setattr(main,'CORS_ORIGINS',['https://testserver'])
+    browser=TestClient(main.app,base_url='https://testserver')
+    login=browser.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'},json={'email':email,'password':'Secret de test 2026!'})
+    assert login.status_code==200 and 'access_token' not in login.json()
+    cookie=login.headers['set-cookie'].lower()
+    assert 'httponly' in cookie and 'secure' in cookie and 'samesite=lax' in cookie
+    assert browser.get('/api/auth/me').status_code==200
+    assert browser.post('/api/cases',json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
+    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1','Origin':'https://attacker.example'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
+    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==403
+    assert browser.post('/api/cases',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'},json={'claim_text':'Une affirmation privée','sector':'autre'}).status_code==201
+    assert browser.post('/api/auth/logout',headers={'X-Checker-CSRF':'1','Origin':'https://testserver'}).status_code==200
+    assert browser.get('/api/auth/me').status_code==401
+    with SessionLocal() as db:
+        test_user=db.query(User).filter_by(email=email).first()
+        if test_user:
+            db.query(UserSession).filter_by(user_id=test_user.id).delete()
+            db.query(Audit).filter_by(actor_id=test_user.id).delete()
+            db.query(Case).filter_by(owner_id=test_user.id).delete()
+            db.delete(test_user)
+            db.commit()
 
 def test_review_optional_and_by_other_user(client,journalist,editor,upload_case):
     pre=client.post(f'/api/cases/{upload_case}/request-review',headers=journalist)
@@ -227,12 +280,16 @@ def test_text_case_without_image_and_existing_case_preserved(client,journalist,u
 
 def test_news_feed_parse_deduplication_and_case_creation(client,journalist,editor,monkeypatch):
     feed=b'''<?xml version="1.0"?><rss><channel><item><guid>news-unique</guid><title>Publication a examiner</title><link>https://example.org/article</link><pubDate>Mon, 03 Nov 2026 10:00:00 GMT</pubDate><category>Sante</category></item></channel></rss>'''
-    class Response: status_code=200; content=feed
+    class Response:
+        status_code=200
+        def __enter__(self): return self
+        def __exit__(self,*_): return False
+        def iter_bytes(self): yield feed
     class Client:
         def __init__(self,**_): pass
         def __enter__(self): return self
         def __exit__(self,*_): return False
-        def get(self,_): return Response()
+        def stream(self,*_): return Response()
     monkeypatch.setattr('app.news.socket.getaddrinfo',lambda *_args,**_kwargs:[(None,None,None,None,('8.8.8.8',443))])
     monkeypatch.setattr('app.news.httpx.Client',Client)
     with SessionLocal() as db:
@@ -257,6 +314,17 @@ def test_news_invalid_feed_and_unknown_dates():
     assert parse_feed(b'<rss><channel><item><title>Sans lien</title></item></channel></rss>')==[]
     parsed=parse_feed(b'<rss><channel><item><guid>x</guid><title>Sans date</title><link>https://example.org/x</link></item></channel></rss>')
     assert parsed[0]['published_at'] is None
+
+def test_news_rejects_script_links_and_xml_entities():
+    import pytest
+    from defusedxml.common import DefusedXmlException
+    from app.news import _safe_feed_url
+    assert parse_feed(b'<rss><channel><item><guid>x</guid><title>Unsafe</title><link>javascript:alert(1)</link></item></channel></rss>')==[]
+    with pytest.raises(ValueError): _safe_feed_url('https://127.0.0.1/feed.xml')
+    with pytest.raises(ValueError): _safe_feed_url('https://attacker.example/feed.xml')
+    with pytest.raises(ValueError): _safe_feed_url('https://www.madagascar-tribune.com:8443/feed.xml')
+    with pytest.raises(DefusedXmlException):
+        parse_feed(b'<!DOCTYPE x [<!ENTITY boom "expanded">]><rss><channel><item><title>&boom;</title></item></channel></rss>')
 
 def test_video_missing_ffmpeg(client,journalist,monkeypatch):
     monkeypatch.setenv('FFMPEG_PATH','C:/missing/ffmpeg.exe')

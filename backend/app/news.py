@@ -2,7 +2,7 @@
 from __future__ import annotations
 import ipaddress
 import socket
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -14,15 +14,25 @@ from .core import NewsItem, NewsSource, NewsSync, now
 MAX_FEED_BYTES=1_500_000
 TIMEOUT=10.0
 SYNC_LOCK=Lock()
+ALLOWED_FEED_HOSTS={'www.madagascar-tribune.com','midi-madagasikara.mg'}
 
 def _safe_feed_url(url:str)->str:
     parsed=urlsplit(url)
-    if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
+    if parsed.scheme != 'https' or not parsed.hostname or parsed.hostname.lower() not in ALLOWED_FEED_HOSTS or parsed.username or parsed.password or parsed.port not in (None,443):
         raise ValueError('URL de flux non autorisée')
     for result in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM):
-        if ipaddress.ip_address(result[4][0]).is_private or ipaddress.ip_address(result[4][0]).is_loopback or ipaddress.ip_address(result[4][0]).is_link_local:
+        if not ipaddress.ip_address(result[4][0]).is_global:
             raise ValueError('Hôte de flux non public')
     return url
+
+def _safe_article_url(url:str)->str|None:
+    try:
+        parsed=urlsplit(url)
+        if parsed.scheme in ('http','https') and parsed.hostname and parsed.netloc and not parsed.username and not parsed.password and len(url)<=500:
+            return url
+    except ValueError:
+        pass
+    return None
 
 def _text(node, names):
     for name in names:
@@ -55,9 +65,10 @@ def parse_feed(content:bytes):
         if not link:
             atom_link=entry.find('{http://www.w3.org/2005/Atom}link'); link=(atom_link.get('href','') if atom_link is not None else '')
         guid=_text(entry,['guid','id','{http://www.w3.org/2005/Atom}id']) or link
-        if title and link and guid:
+        safe_link=_safe_article_url(link)
+        if title and safe_link and guid:
             category=_text(entry,['category','{http://www.w3.org/2005/Atom}category'])
-            result.append({'id':guid[:500],'title':title,'url':link[:500],'published_at':_date(_text(entry,['pubDate','published','updated','{http://www.w3.org/2005/Atom}published'])),'sector':_sector(category)})
+            result.append({'id':guid[:500],'title':title,'url':safe_link,'published_at':_date(_text(entry,['pubDate','published','updated','{http://www.w3.org/2005/Atom}published'])),'sector':_sector(category)})
     return result
 
 def sync_source(db:Session, source:NewsSource):
@@ -66,11 +77,14 @@ def sync_source(db:Session, source:NewsSource):
     sync=NewsSync(source_id=source.id); db.add(sync); db.commit()
     try:
         url=_safe_feed_url(source.feed_url)
-        with httpx.Client(timeout=TIMEOUT,follow_redirects=False,headers={'User-Agent':'Checker-ko-news-monitoring/0.5'}) as client:
-            response=client.get(url)
-        if response.status_code != 200: raise ValueError(f'HTTP {response.status_code}')
-        if len(response.content)>MAX_FEED_BYTES: raise ValueError('Flux trop volumineux')
-        entries=parse_feed(response.content); sync.fetched_count=len(entries)
+        content=bytearray()
+        with httpx.Client(timeout=TIMEOUT,follow_redirects=False,trust_env=False,headers={'User-Agent':'Checker-ko-news-monitoring/0.5'}) as client:
+            with client.stream('GET',url) as response:
+                if response.status_code != 200: raise ValueError(f'HTTP {response.status_code}')
+                for chunk in response.iter_bytes():
+                    content.extend(chunk)
+                    if len(content)>MAX_FEED_BYTES: raise ValueError('Flux trop volumineux')
+        entries=parse_feed(bytes(content)); sync.fetched_count=len(entries)
         inserted=0
         for entry in entries:
             if db.query(NewsItem).filter_by(canonical_id=entry['id']).first(): continue

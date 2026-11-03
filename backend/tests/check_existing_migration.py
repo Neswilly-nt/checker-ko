@@ -23,8 +23,14 @@ init_db()
 with sqlite3.connect(target) as connection:
     after = {table: connection.execute(f'SELECT count(*) FROM {table}').fetchone()[0] for table in tables}
     nullable = next(row[3] == 0 for row in connection.execute('PRAGMA table_info(verification_cases)') if row[1] == 'asset_id')
+    media_columns = {row[1] for row in connection.execute('PRAGMA table_info(media_assets)')}
+    evidence_columns = {row[1] for row in connection.execute('PRAGMA table_info(evidence)')}
+    created_social_table = connection.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='case_social_posts'").fetchone()[0] == 1
     foreign_key_errors = list(connection.execute('PRAGMA foreign_key_check'))
 assert before == after, (before, after)
 assert nullable
+assert 'video_timestamp_seconds' in media_columns
+assert 'media_id' in evidence_columns
+assert created_social_table
 assert not foreign_key_errors, foreign_key_errors
 print('Migration vérifiée sur copie :', before, 'identifiants et liens conservés ; sauvegarde :', directory)

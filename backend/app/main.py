@@ -20,14 +20,14 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from .core import (Analysis, Case, Video, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
+from .core import (Analysis, Case, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
     now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.7.1')
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.8.0')
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
 
 @app.on_event('startup')
@@ -62,6 +62,15 @@ class EvidenceIn(BaseModel):
     note: str = Field(default='',max_length=5000)
     relation_type: Literal['appuie','contredit','contexte']
     archived_media_id: int|None = None
+    media_id: int|None = None
+
+class SocialPostIn(BaseModel):
+    platform: Literal['Facebook','TikTok','WhatsApp','Instagram','YouTube','X','Autre']
+    original_url: str = Field(min_length=8,max_length=500)
+    declared_account: str|None = Field(default=None,max_length=250)
+    published_at: str|None = Field(default=None,max_length=80)
+    capture_date: str|None = Field(default=None,max_length=80)
+    observation: str = Field(default='',max_length=3000)
 
 AssessmentStatus = Literal['oui','non','a_verifier','non_applicable']
 class AssessmentIn(BaseModel):
@@ -192,6 +201,7 @@ def case_view(db,item,user):
         'video':{'filename':video.original_filename,'sha256':video.sha256,'size_bytes':video.size_bytes,
                  'duration_seconds':video.duration_seconds,'width':video.width,'height':video.height,
                  'frames':[media_view(db.get(Media,mid)) for mid in json.loads(video.frame_ids_json)]} if video else None,
+        'social_posts':[{'id':post.id,'platform':post.platform,'original_url':post.original_url,'declared_account':post.declared_account,'published_at':post.published_at,'capture_date':post.capture_date,'observation':post.observation,'created_at':post.created_at} for post in db.query(SocialPost).filter_by(case_id=item.id).order_by(SocialPost.id.desc()).all()],
         'matches':matches_for(db,item,user),'evidence':[evidence_view(e,assessments.get(e.id)) for e in evidence],
         'verdicts':[verdict_view(v,db) for v in verdicts]}
 
@@ -304,6 +314,7 @@ async def upload_video(file:UploadFile=File(...),caption:str=Form(''),source_url
             extract=subprocess.run([ffmpeg,'-nostdin','-v','error','-ss',str(at),'-i',str(path),'-frames:v','1','-vf','scale=800:800:force_original_aspect_ratio=decrease','-f','image2pipe','-vcodec','mjpeg','pipe:1'],capture_output=True,timeout=20,shell=False)
             if extract.returncode or not extract.stdout: raise HTTPException(422,'Extraction des images-clés impossible')
             frame=store_media(db,user.id,extract.stdout,f'image-cle-{index+1}.jpg')
+            frame.video_timestamp_seconds=round(at,3)
             frame_paths.append(media_path(frame));frame_ids.append(frame.id)
         item=Case(asset_id=frame_ids[0],owner_id=user.id,claim_text=caption.strip(),original_source_url=source_url or None,sector=sector,region=checked_region(region),status='en_cours')
         db.add(item);db.flush()
@@ -334,6 +345,34 @@ def frame_matches(case_id:int,media_id:int,db:Session=Depends(db_session),user:U
     if not video or media_id not in json.loads(video.frame_ids_json): raise HTTPException(404,'Image-clé introuvable')
     return {'items':matches_for_media(db,db.get(Media,media_id),user)}
 
+@app.post('/api/cases/{case_id}/social-posts',status_code=201)
+def add_social_post(case_id:int,data:SocialPostIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user);only_owner(item,user)
+    url=valid_url(data.original_url)
+    record=SocialPost(case_id=item.id,created_by=user.id,platform=data.platform,original_url=url,
+        declared_account=data.declared_account.strip() if data.declared_account else None,
+        published_at=data.published_at.strip() if data.published_at else None,
+        capture_date=data.capture_date.strip() if data.capture_date else None,observation=data.observation.strip())
+    db.add(record);audit(db,user.id,item.id,'social_post_documented',{'platform':data.platform});item.updated_at=now();db.commit()
+    return {'id':record.id}
+
+@app.get('/api/cases/{case_id}/compare')
+def compare_media(case_id:int,left_media_id:int,right_media_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user)
+    allowed=set()
+    if item.asset_id: allowed.add(item.asset_id)
+    video=db.query(Video).filter_by(case_id=item.id).first()
+    if video: allowed.update(json.loads(video.frame_ids_json))
+    for media_id in list(allowed):
+        allowed.update(match['media_id'] for match in matches_for_media(db,db.get(Media,media_id),user))
+    if left_media_id not in allowed or right_media_id not in allowed:
+        raise HTTPException(403,'La comparaison est limitée aux médias du dossier et aux archives accessibles.')
+    left,right=db.get(Media,left_media_id),db.get(Media,right_media_id)
+    if not left or not right: raise HTTPException(404,'Image de comparaison introuvable')
+    distance=(int(left.phash,16)^int(right.phash,16)).bit_count()
+    return {'left_media_id':left.id,'right_media_id':right.id,'phash_hamming_distance':distance,
+        'interpretation':'Indicateur de ressemblance visuelle uniquement. Il ne démontre ni identité, ni authenticité, ni date, ni lieu.'}
+
 @app.post('/api/cases/{case_id}/analyze')
 def analyze(case_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
     item=get_case(case_id,db,user); only_owner(item,user)
@@ -349,6 +388,11 @@ def analyze(case_id:int,db:Session=Depends(db_session),user:User=Depends(current
 @app.post('/api/cases/{case_id}/evidence',status_code=201)
 def add_evidence(case_id:int,data:EvidenceIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
     item=get_case(case_id,db,user);only_owner(item,user)
+    if data.media_id:
+        video=db.query(Video).filter_by(case_id=item.id).first()
+        owned_media={item.asset_id} if item.asset_id else set()
+        if video: owned_media.update(json.loads(video.frame_ids_json))
+        if data.media_id not in owned_media: raise HTTPException(403,'Cette image ne provient pas du dossier.')
     if data.archived_media_id:
         archive=db.get(Media,data.archived_media_id)
         if not archive or not (archive.is_archive or archive.owner_id==user.id): raise HTTPException(403,'Archive inaccessible')
@@ -360,7 +404,7 @@ def add_evidence(case_id:int,data:EvidenceIn,db:Session=Depends(db_session),user
                 allowed.update(m['media_id'] for m in matches_for_media(db,db.get(Media,frame_id),user))
         if archive.id not in allowed: raise HTTPException(422,'Cette archive ne correspond pas au dossier')
     url=valid_url(data.url)
-    e=Evidence(case_id=case_id,added_by=user.id,url=url,title=data.title,note=data.note,date_of_source=data.date_of_source,relation_type=data.relation_type,archived_media_id=data.archived_media_id)
+    e=Evidence(case_id=case_id,added_by=user.id,url=url,title=data.title,note=data.note,date_of_source=data.date_of_source,relation_type=data.relation_type,archived_media_id=data.archived_media_id,media_id=data.media_id)
     db.add(e);audit(db,user.id,item.id,'evidence_added');item.updated_at=now();db.commit()
     return evidence_view(e)
 
@@ -379,8 +423,14 @@ def edit_evidence(case_id:int,evidence_id:int,data:EvidenceIn,db:Session=Depends
     if not evidence: raise HTTPException(404,'Preuve introuvable')
     if data.archived_media_id!=evidence.archived_media_id:
         if data.archived_media_id and data.archived_media_id not in [m['media_id'] for m in matches_for(db,item,user)]: raise HTTPException(422,'Archive non associable')
+    if data.media_id:
+        video=db.query(Video).filter_by(case_id=item.id).first()
+        owned_media={item.asset_id} if item.asset_id else set()
+        if video: owned_media.update(json.loads(video.frame_ids_json))
+        if data.media_id not in owned_media: raise HTTPException(403,'Cette image ne provient pas du dossier.')
     evidence.title=data.title;evidence.url=valid_url(data.url);evidence.note=data.note
     evidence.date_of_source=data.date_of_source;evidence.relation_type=data.relation_type;evidence.archived_media_id=data.archived_media_id
+    evidence.media_id=data.media_id
     audit(db,user.id,case_id,'evidence_edited');item.updated_at=now();db.commit()
     return evidence_view(evidence)
 

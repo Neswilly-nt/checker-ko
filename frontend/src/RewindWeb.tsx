@@ -2,7 +2,7 @@
 import {useState, type FormEvent} from 'react';
 import {Download, ExternalLink, Globe2, Info, Link2, LockKeyhole, Plus, Search, ShieldCheck} from 'lucide-react';
 import {api, getToken, jsonRequest} from './api';
-import type {Case} from './types';
+import type {Case,Media} from './types';
 
 type Observation = 'identique'|'ressemblante'|'contexte'|'aucun';
 type Relation = 'appuie'|'contredit'|'contexte';
@@ -18,7 +18,7 @@ const SOURCES = [
 ] as const;
 const DEFAULTS = {title:'',url:'',date_of_source:'',note:'',kind:'ressemblante' as Observation,service:'Google Lens',relation_type:'contexte' as Relation};
 
-export default function RewindWeb({record,mine,action}:{record:Case;mine:boolean;action:(fn:()=>Promise<unknown>,message:string)=>Promise<boolean>}){
+export default function RewindWeb({record,mine,action}:{record:Case&{media:Media};mine:boolean;action:(fn:()=>Promise<unknown>,message:string)=>Promise<boolean>}){
  const [form,setForm]=useState(DEFAULTS);
  const [error,setError]=useState('');
  const [downloading,setDownloading]=useState(false);

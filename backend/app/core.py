@@ -59,6 +59,7 @@ class Media(Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     phash: Mapped[str] = mapped_column(String(16))
+    video_timestamp_seconds: Mapped[float|None] = mapped_column(nullable=True)
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     exif_json: Mapped[str] = mapped_column(Text, default='{}')
@@ -104,6 +105,19 @@ class Video(Base):
     height: Mapped[int] = mapped_column(Integer)
     frame_ids_json: Mapped[str] = mapped_column(Text, default='[]')
 
+class SocialPost(Base):
+    __tablename__ = 'case_social_posts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey('verification_cases.id'), index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    platform: Mapped[str] = mapped_column(String(30))
+    original_url: Mapped[str] = mapped_column(String(2000))
+    declared_account: Mapped[str|None] = mapped_column(String(250), nullable=True)
+    published_at: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    capture_date: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    observation: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Evidence(Base):
     __tablename__ = 'evidence'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -116,6 +130,7 @@ class Evidence(Base):
     relation_type: Mapped[str] = mapped_column(String(20))
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_media_id: Mapped[int|None] = mapped_column(ForeignKey('media_assets.id'), nullable=True)
+    media_id: Mapped[int|None] = mapped_column(ForeignKey('media_assets.id'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class SourceAssessment(Base):
@@ -427,14 +442,14 @@ def media_path(media):
 def user_view(user): return {'id':user.id,'name':user.name,'email':user.email,'role':user.role}
 
 def media_view(media, analysis=None):
-    return {'id':media.id,'filename':media.original_filename,'mime_type':media.mime_type,'size_bytes':media.size_bytes,'sha256':media.sha256,'phash':media.phash,'width':media.width,'height':media.height,'created_at':media.created_at,'exif':json.loads(media.exif_json),'is_archive':media.is_archive,'preview_url':f'/api/media/{media.id}/preview','analysis': {'tool_status':analysis.tool_status,'c2pa_status':analysis.c2pa_status,'claim':json.loads(analysis.c2pa_claim_json),'warnings':json.loads(analysis.warnings_json),'analyzed_at':analysis.analyzed_at} if analysis else None}
+    return {'id':media.id,'filename':media.original_filename,'mime_type':media.mime_type,'size_bytes':media.size_bytes,'sha256':media.sha256,'phash':media.phash,'width':media.width,'height':media.height,'video_timestamp_seconds':media.video_timestamp_seconds,'created_at':media.created_at,'exif':json.loads(media.exif_json),'is_archive':media.is_archive,'preview_url':f'/api/media/{media.id}/preview','analysis': {'tool_status':analysis.tool_status,'c2pa_status':analysis.c2pa_status,'claim':json.loads(analysis.c2pa_claim_json),'warnings':json.loads(analysis.warnings_json),'analyzed_at':analysis.analyzed_at} if analysis else None}
 
 def assessment_view(value):
     if not value: return None
     fields=('source_identity_status','subject_expertise_status','verifiable_evidence_status','primary_source_status','date_verified_status','original_document_status','independent_corroboration_status','interests_disclosure_status','contradictions_status','evidence_relevance','assessment_summary','assessment_note')
     return {'id':value.id, **{field:getattr(value,field) for field in fields}, 'created_at':value.created_at,'updated_at':value.updated_at}
 
-def evidence_view(e, assessment=None): return {'id':e.id,'title':e.title,'url':e.url,'date_of_source':e.date_of_source,'note':e.note,'relation_type':e.relation_type,'archived_media_id':e.archived_media_id,'created_at':e.created_at,'assessment':assessment_view(assessment)}
+def evidence_view(e, assessment=None): return {'id':e.id,'title':e.title,'url':e.url,'date_of_source':e.date_of_source,'note':e.note,'relation_type':e.relation_type,'archived_media_id':e.archived_media_id,'media_id':e.media_id,'created_at':e.created_at,'assessment':assessment_view(assessment)}
 
 def verdict_view(v, db):
     author=db.get(User,v.author_id)
@@ -472,6 +487,8 @@ def init_db():
                 existing_tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 additions={
                     'verification_cases': {'region':'VARCHAR(80)'},
+                    'media_assets': {'video_timestamp_seconds':'FLOAT'},
+                    'evidence': {'media_id':'INTEGER REFERENCES media_assets(id)'},
                     'source_directory': {
                         'archived':'BOOLEAN NOT NULL DEFAULT 0', 'source_key':'VARCHAR(60)',
                         'acronym':'VARCHAR(40)', 'organization_type':'VARCHAR(80)',

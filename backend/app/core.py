@@ -558,10 +558,14 @@ def init_db():
             if not db.query(User).filter_by(email=email).first():
                 db.add(User(name=name,email=email,role=role,password_hash=hash_password(password)))
         # Sources are application-controlled; users cannot submit arbitrary collection URLs.
-        feeds=[] if DEMO_MODE else [
+        feeds=[
             ('madagascar-tribune','Madagascar Tribune','https://www.madagascar-tribune.com/spip.php?page=backend'),
-            ('midi-madagasikara','Midi Madagasikara','https://midi-madagasikara.mg/feed/'),
+            ('newsmada','NewsMada','https://newsmada.com/feed/'),
+            ('lexpress-madagascar',"L’Express de Madagascar",'https://www.lexpress.mg/feeds/posts/default?alt=rss'),
         ]
+        old_midi=db.query(NewsSource).filter_by(key='midi-madagasikara').first()
+        if old_midi:
+            old_midi.enabled=False
         for key,name,feed_url in feeds:
             if not db.query(NewsSource).filter_by(key=key).first():
                 db.add(NewsSource(key=key,name=name,feed_url=feed_url,source_type='rss',

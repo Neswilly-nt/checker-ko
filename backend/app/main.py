@@ -29,7 +29,7 @@ from .core import (Analysis, Case, Video, SocialPost, DirectorySource, Directory
     now, init_db, DEMO_USERS, DEMO_MODE, make_token, revoke_token, get_user, verify_password, store_media, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
-from .news import sync_source
+from .news import refresh_news, sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
 from . import storage
 
@@ -38,7 +38,7 @@ async def lifespan(_app):
     startup()
     yield
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.9.0',lifespan=lifespan)
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.9.1',lifespan=lifespan)
 SESSION_COOKIE='checker_ko_session'
 CSRF_HEADER='x-checker-csrf'
 COOKIE_SAMESITE=os.environ.get('CHECKER_COOKIE_SAMESITE','lax').strip().lower()
@@ -315,6 +315,7 @@ def create_claim(data:ClaimIn,db:Session=Depends(db_session),user:User=Depends(c
 
 @app.get('/api/news')
 def list_news(q:str='',sector:str='',region:str='',source_id:str='',order:Literal['newest','oldest']='newest',db:Session=Depends(db_session),user:User=Depends(current_user)):
+    refresh_news(db)
     stmt=db.query(NewsItem,NewsSource).join(NewsSource,NewsItem.source_id==NewsSource.id)
     if q: stmt=stmt.filter(NewsItem.title.ilike(f'%{q[:100]}%'))
     if sector: stmt=stmt.filter(NewsItem.sector==sector[:80])

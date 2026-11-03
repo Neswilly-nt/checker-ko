@@ -38,7 +38,7 @@ Pour le mode direct, la CSP du Static Site doit également ajouter l'origine exa
 | `CHECKER_DATA_DIR` | `/tmp/checker-ko` (temporaire, aucun média durable ici) |
 | `CHECKER_STORAGE_BACKEND` | `supabase` |
 | `CHECKER_SUPABASE_STORAGE_BUCKET` | `checker-private` |
-| `CHECKER_DEMO_MODE` | `true` (ne peuple pas le catalogue réel ni les flux RSS) |
+| `CHECKER_DEMO_MODE` | `true` (ne peuple pas le catalogue institutionnel réel ; la veille affiche des métadonnées de publications publiques réelles) |
 | `CHECKER_COOKIE_SAMESITE` | `lax` |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `2` / `0` |
 | `VIDEO_MAX_MB` / `VIDEO_MAX_SECONDS` | `15` / `15` |
@@ -65,7 +65,7 @@ APP_ENV=production CHECKER_DEMO_MODE=true CHECKER_DEMO_SEED=enabled \
   python -m app.cli seed-demo
 ```
 
-Le mot de passe est demandé de façon interactive. La commande refuse si la base contient déjà un compte ou un dossier. Elle crée une seule journaliste fictive `demo.journaliste@example.test`, un dessin généré en mémoire, un dossier, une note et un rapport fictifs. L'application n'insère alors ni flux RSS réels ni annuaire institutionnel. `CHECKER_DEMO_SEED` est une autorisation ponctuelle de commande, jamais une variable Render permanente.
+Le mot de passe est demandé de façon interactive. La commande refuse si la base contient déjà un compte ou un dossier. Elle crée une seule journaliste fictive `demo.journaliste@example.test`, un dessin généré en mémoire, un dossier, une note et un rapport fictifs. Les dossiers de démonstration restent fictifs. Le démarrage de l'application enregistre les flux RSS publics et la page Actualités collecte leurs titres et liens à l'ouverture ; l'annuaire institutionnel réel reste absent. `CHECKER_DEMO_SEED` est une autorisation ponctuelle de commande, jamais une variable Render permanente.
 
 Les comptes utilisateurs ne disposent d'aucune route d'inscription publique. Pour ajouter un compte démo, utiliser `python -m app.cli create-user` depuis le poste opérateur. Ne pas y copier de vrais dossiers.
 

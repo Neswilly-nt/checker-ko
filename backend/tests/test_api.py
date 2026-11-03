@@ -4,7 +4,7 @@ from uuid import uuid4
 from PIL import Image
 from app.core import c2pa_analyze, inspect_image, MAX_BYTES
 from app.core import SessionLocal, Case
-from app.core import NewsItem, NewsSource
+from app.core import NewsItem, NewsSource, NewsSync
 from app.news import parse_feed, sync_source
 
 ASSETS=Path(__file__).parents[1]/'demo_assets'
@@ -299,6 +299,13 @@ def test_news_feed_parse_deduplication_and_case_creation(client,journalist,edito
         assert second.inserted_count==0
     listed=client.get('/api/news?sector=autre',headers=journalist)
     assert listed.status_code==200 and any(x['title']=='Publication a examiner' for x in listed.json()['items'])
+    assert {source['name'] for source in listed.json()['sources']}=={'Madagascar Tribune','NewsMada','L’Express de Madagascar'}
+    with SessionLocal() as db:
+        first_read_syncs=db.query(NewsSync).count()
+        assert first_read_syncs==4  # Two manual attempts, then the other two sources on read.
+    assert client.get('/api/news',headers=journalist).status_code==200
+    with SessionLocal() as db:
+        assert db.query(NewsSync).count()==first_read_syncs
     assert client.get('/api/news?source_id=',headers=journalist).status_code==200
     assert client.get('/api/news?source_id=pas-un-id',headers=journalist).status_code==422
     article=next(x for x in listed.json()['items'] if x['title']=='Publication a examiner')

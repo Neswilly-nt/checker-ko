@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from defusedxml import ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 import httpx
@@ -14,7 +14,9 @@ from .core import NewsItem, NewsSource, NewsSync, now
 MAX_FEED_BYTES=1_500_000
 TIMEOUT=10.0
 SYNC_LOCK=Lock()
-ALLOWED_FEED_HOSTS={'www.madagascar-tribune.com','midi-madagasikara.mg'}
+REFRESH_LOCK=Lock()
+REFRESH_INTERVAL=timedelta(minutes=30)
+ALLOWED_FEED_HOSTS={'www.madagascar-tribune.com','newsmada.com','www.lexpress.mg'}
 
 def _safe_feed_url(url:str)->str:
     parsed=urlsplit(url)
@@ -95,3 +97,27 @@ def sync_source(db:Session, source:NewsSource):
     finally:
         SYNC_LOCK.release()
     return sync
+
+
+def refresh_news(db:Session):
+    """Refresh enabled feeds on the first read, then at most once per interval."""
+    if not REFRESH_LOCK.acquire(blocking=False):
+        return
+    try:
+        cutoff=now()-REFRESH_INTERVAL
+        for source in db.query(NewsSource).filter_by(enabled=True).all():
+            latest=(db.query(NewsSync).filter_by(source_id=source.id)
+                    .order_by(NewsSync.id.desc()).first())
+            if latest and latest.completed_at:
+                completed=latest.completed_at
+                if completed.tzinfo is None:
+                    completed=completed.replace(tzinfo=timezone.utc)
+                if completed>=cutoff:
+                    continue
+            try:
+                sync_source(db,source)
+            except RuntimeError:
+                # A manual synchronization is already in progress.
+                return
+    finally:
+        REFRESH_LOCK.release()

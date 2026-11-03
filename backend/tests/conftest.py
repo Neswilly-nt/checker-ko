@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 _TMP=Path(tempfile.mkdtemp(prefix='checker_ko_tests_'))
 os.environ['CHECKER_DATA_DIR']=str(_TMP)
-os.environ['DATABASE_URL']='sqlite:///'+str(_TMP/'test.db')
+os.environ['DATABASE_URL']=os.environ.get('CHECKER_TEST_DATABASE_URL','sqlite:///'+str(_TMP/'test.db'))
 from app.main import app
 
 @pytest.fixture(scope='session')

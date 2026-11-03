@@ -41,3 +41,27 @@ La version publique ne doit être déclarée prête qu'après fermeture de tous 
 - Frontend : contrôle TypeScript, contrôle i18n (556 clés), build Vite et `npm audit --audit-level=moderate` réussis; aucune vulnérabilité npm connue.
 - Python : `pip-audit -r backend/requirements.txt` réussi après le relèvement de Pillow; aucune vulnérabilité connue dans la résolution actuelle.
 - Alembic : `upgrade head` puis `alembic check` réussis sur une SQLite temporaire. Ce résultat valide la révision et la cohérence des modèles, pas l'exécution PostgreSQL.
+
+## Vérifications de la branche Render + Supabase
+
+**État au 3 novembre 2026 : démonstration temporaire en préparation, pas prête pour la production.** Aucun service cloud n'a été créé et aucun déploiement n'a été lancé. Les vérifications ci-dessous utilisent des données synthétiques et une base PostgreSQL Docker jetable.
+
+| Contrôle | Résultat |
+| --- | --- |
+| Pytest SQLite local | 32 passés, 1 ignoré |
+| Pytest PostgreSQL 16 isolé | 32 passés, 1 ignoré |
+| `alembic upgrade head` PostgreSQL vierge et `alembic check` | Réussis, aucun écart de schéma |
+| RLS avec rôle restreint | Réussi; lecture directe refusée |
+| Sauvegarde/restauration PostgreSQL locale | Dump custom restauré dans une seconde base vierge; utilisateur et dossier fictifs relus après restauration |
+| TypeScript et i18n | Réussis; 556 clés FR/MG/EN concordantes |
+| Build frontend et `npm audit --audit-level=moderate` | Réussis, aucune vulnérabilité modérée ou supérieure détectée |
+| `pip-audit` | Aucune vulnérabilité connue dans les dépendances auditées |
+| YAML Render et `git diff --check` | Réussis |
+
+L'image Docker API a été construite et démarrée localement; `/api/health` a répondu 200, Alembic a migré la base SQLite du conteneur et FFmpeg était détecté. Un test est ignoré lorsque les outils externes médias ne sont pas disponibles. C2PA Tool n'est pas inclus dans l'image démo et doit être présenté comme indisponible; FFmpeg est inclus et les vidéos sont limitées à 15 Mo et 15 secondes.
+
+L'automatisation du navigateur a été arrêtée par le mécanisme Windows, qui n'a pas pu déterminer l'URL active de Chrome. La connexion, la déconnexion, le rechargement et l'accès à l'image protégée ne sont donc pas validés dans un navigateur réel. Aucun compte Supabase n'est connecté : bucket distant, connectivité Render, test de restauration distante des objets et migrations sur Supabase restent à faire manuellement avec un projet neuf et des données fictives. La restauration PostgreSQL a été testée uniquement dans des bases locales isolées.
+
+Le Blueprint désactive le déploiement automatique et configure un proxy `/api/*` same-origin recommandé pour éviter les cookies tiers. Il faut encore confirmer les domaines Render, le rewrite et les en-têtes reçus dans l'environnement de démonstration. Le disque Render gratuit est éphémère; Supabase Storage doit porter les médias. Les fichiers locaux existants ne sont pas transférés automatiquement lors d'un changement de `CHECKER_STORAGE_BACKEND`; ne pas basculer une base existante sans outil de backfill et vérification des empreintes. Partir d'un projet Supabase vierge. Le plan gratuit, sans SLA et avec ressources limitées, n'est pas destiné à des données réelles ni à un usage durable.
+
+Voir [RENDER_SUPABASE_DEMO.md](RENDER_SUPABASE_DEMO.md) pour les variables, procédures de restauration et étapes manuelles. Une revue humaine et la CI restent requises; ne pas fusionner ni activer le déploiement sans validation.

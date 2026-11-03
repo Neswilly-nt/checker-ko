@@ -1,7 +1,7 @@
 ﻿import {useEffect,useState,useCallback,useRef, type FormEvent, type ReactNode} from 'react';
 import {BrowserRouter,NavLink,Navigate,Route,Routes,useNavigate,useParams,useLocation,Link} from 'react-router-dom';
 import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronRight,Clock3,ExternalLink,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Image as ImageIcon,Info,LayoutDashboard,LockKeyhole,LogOut,Menu,Plus,Printer,RefreshCcw,Search,ShieldCheck,ShieldQuestion,Trash2,UploadCloud,X,AlertCircle,Eye,ScanSearch,Database,Send} from 'lucide-react';
-import {api,ApiError,jsonRequest} from './api';
+import {api,apiUrl,ApiError,jsonRequest} from './api';
 import type {User,Case,CaseItem,Match,Evidence,Verdict,NewsItem} from './types';
 import SourcesDirectory from './SourcesDirectory';
 import {loadRegions,type RegionCatalog} from './regions';
@@ -29,7 +29,8 @@ function ProtectedImage({url,alt,className=''}:{url:string;alt:string;className?
  const {t}=useI18n();
  const [src,setSrc]=useState('');const [failed,setFailed]=useState(false);
  useEffect(()=>{let active=true;let objectUrl='';setFailed(false);setSrc('');
-  fetch(url,{credentials:'same-origin',cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('image');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{if(active)setFailed(true)});
+  const requestUrl=apiUrl(url);const credentials=new URL(requestUrl,window.location.href).origin===window.location.origin?'same-origin':'include';
+  fetch(requestUrl,{credentials,cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('image');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{if(active)setFailed(true)});
   return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
  },[url]);
  if(failed)return <div className={`image-fallback ${className}`}><FileImage size={34}/>{t('common.previewUnavailable')}</div>;

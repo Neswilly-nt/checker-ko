@@ -12,6 +12,20 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: checker_test
+          POSTGRES_PASSWORD: checker_test_only
+          POSTGRES_DB: checker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U checker_test -d checker_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,6 +48,29 @@ jobs:
         run: |
           python -m alembic upgrade head
           python -m alembic check
+      - name: Validate migrations against PostgreSQL 16
+        working-directory: backend
+        env:
+          APP_ENV: test
+          CHECKER_SECRET: ci-test-only-secret-with-at-least-32-characters
+          CHECKER_DATA_DIR: ${{ runner.temp }}/checker-ko-postgres-data
+          DATABASE_URL: postgresql+psycopg://checker_test:checker_test_only@127.0.0.1:5432/checker_test
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
+      - name: Run API suite against PostgreSQL 16
+        working-directory: backend
+        env:
+          APP_ENV: development
+          CHECKER_SECRET: ci-test-only-secret-with-at-least-32-characters
+          CHECKER_DATA_DIR: ${{ runner.temp }}/checker-ko-postgres-api-data
+          CHECKER_TEST_DATABASE_URL: postgresql+psycopg://checker_test:checker_test_only@127.0.0.1:5432/checker_test
+        run: python -m pytest -q
+      - name: Verify PostgreSQL deny-by-default RLS
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://checker_test:checker_test_only@127.0.0.1:5432/checker_test
+        run: python tests/check_postgres_rls.py
       - name: Audit backend dependencies
         run: |
           python -m pip install pip-audit

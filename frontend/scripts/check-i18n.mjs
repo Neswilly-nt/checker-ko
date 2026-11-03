@@ -41,7 +41,7 @@ const frenchValues = new Set(Object.values(dictionaries.get('fr')).map(value => 
 const allowlisted = new Set([
   'Checker-ko', 'Google Lens', 'TinEye', 'Facebook', 'TikTok', 'WhatsApp', 'Instagram', 'YouTube', 'X', 'Autre',
   'journaliste@checker.local', 'redaction@checker.local', 'CK-', 's', 's.',
-  'good', 'neutral', 'alert', 'status', 'active', 'selected', 'MP4',
+  'good', 'neutral', 'alert', 'status', 'active', 'selected', 'text', 'password', 'MP4',
   'image/jpeg,image/png,image/webp', 'video/mp4',
 ]);
 const uncovered = new Map();

@@ -51,6 +51,11 @@
   "login.footer": "Natao ho an’ny mpanao gazety sy ny ekipa madinika eto Madagasikara.",
   "login.welcome": "Tongasoa eto amin’ny Checker-ko",
   "login.prompt": "Midira amin’ny kaontinao fanamarinana.",
+  "login.theme.light": "Alefaso ny endrika mazava",
+  "login.theme.dark": "Alefaso ny endrika maizina",
+  "login.password.show": "Asehoy ny teny miafina",
+  "login.password.hide": "Afeno ny teny miafina",
+  "login.assurance": "Porofo azo hamarinina. Olombelona no mandray fanapahan-kevitra.",
   "login.email": "Adiresy mailaka",
   "login.password": "Teny miafina",
   "login.submit": "Hiditra",
@@ -554,5 +559,8 @@
   "workspace.oneEvidence": "Singa 1",
   "workspace.manyEvidence": "Singa {{count}}",
   "workspace.reviewedBy": "Nojeren’i {{name}}",
-  "workspace.notFinalized": "Tsy mbola azo faranana ity antontan-taratasy ity."
+  "workspace.notFinalized": "Tsy mbola azo faranana ity antontan-taratasy ity.",
+  "login.success": "Voaray soa aman-tsara ny fidirana",
+  "login.title.video": "Mendrika hohamarinina ny lahatsary tsirairay.",
+  "login.title.claim": "Tokony hohamarinina ny filazana tsirairay."
 }

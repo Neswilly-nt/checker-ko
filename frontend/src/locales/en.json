@@ -51,6 +51,11 @@
   "login.footer": "Built for journalists and small newsrooms in Madagascar.",
   "login.welcome": "Welcome to Checker-ko",
   "login.prompt": "Sign in to your verification workspace.",
+  "login.theme.light": "Switch to light theme",
+  "login.theme.dark": "Switch to dark theme",
+  "login.password.show": "Show password",
+  "login.password.hide": "Hide password",
+  "login.assurance": "Evidence you can inspect. Final judgement stays human.",
   "login.email": "Email address",
   "login.password": "Password",
   "login.submit": "Sign in",
@@ -554,5 +559,8 @@
   "workspace.oneEvidence": "1 item",
   "workspace.manyEvidence": "{{count}} items",
   "workspace.reviewedBy": "Reviewed by {{name}}",
-  "workspace.notFinalized": "This case cannot be finalized yet."
+  "workspace.notFinalized": "This case cannot be finalized yet.",
+  "login.success": "Signed in successfully",
+  "login.title.video": "Every video deserves to be checked.",
+  "login.title.claim": "Every claim deserves to be checked."
 }

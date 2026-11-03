@@ -51,6 +51,11 @@
   "login.footer": "Conçu pour les journalistes et petites rédactions à Madagascar.",
   "login.welcome": "Bienvenue sur Checker-ko",
   "login.prompt": "Connectez-vous à votre espace de vérification.",
+  "login.theme.light": "Activer le thème clair",
+  "login.theme.dark": "Activer le thème sombre",
+  "login.password.show": "Afficher le mot de passe",
+  "login.password.hide": "Masquer le mot de passe",
+  "login.assurance": "Des preuves à l’appui. Le jugement reste humain.",
   "login.email": "Adresse e-mail",
   "login.password": "Mot de passe",
   "login.submit": "Se connecter",
@@ -554,5 +559,8 @@
   "workspace.oneEvidence": "1 élément",
   "workspace.manyEvidence": "{{count}} éléments",
   "workspace.reviewedBy": "Relu par {{name}}",
-  "workspace.notFinalized": "Cette fiche ne peut pas encore être finalisée."
+  "workspace.notFinalized": "Cette fiche ne peut pas encore être finalisée.",
+  "login.success": "Connexion réussie",
+  "login.title.video": "Chaque vidéo mérite une vérification.",
+  "login.title.claim": "Chaque affirmation mérite une vérification."
 }

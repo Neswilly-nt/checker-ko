@@ -26,6 +26,8 @@ Les libellés de secteurs administratifs connus sont traduits à l’affichage s
 
 La version malagasy est une traduction de travail, pas une validation éditoriale officielle. Avant diffusion, demander une relecture à une personne maîtrisant le malagasy rédactionnel et les usages journalistiques de Madagascar. Elle devrait vérifier la terminologie statistique, les formulations de conclusion et d’évaluation, ainsi que la clarté des messages courts sur mobile. Les traductions anglaises et françaises sont également à relire pour le style rédactionnel.
 
+Le titre du login alterne les formulations « image », « vidéo » et « affirmation ». Les trois variantes malagasy sont une traduction de travail et doivent être relues par la rédaction avant diffusion.
+
 ## Validation
 
 Depuis `frontend/`, lancer `npm run i18n:check`, `npm run check` et `npm run build`. Le contrôle des textes JSX est une détection pragmatique : les chaînes métier ou données injectées au runtime ne sont pas traduisibles comme des libellés d’interface et doivent rester intactes.

@@ -555,5 +555,7 @@
   "workspace.manyEvidence": "{{count}} items",
   "workspace.reviewedBy": "Reviewed by {{name}}",
   "workspace.notFinalized": "This case cannot be finalized yet.",
-  "login.success": "Signed in successfully"
+  "login.success": "Signed in successfully",
+  "login.title.video": "Every video deserves to be checked.",
+  "login.title.claim": "Every claim deserves to be checked."
 }

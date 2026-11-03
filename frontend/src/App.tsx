@@ -23,8 +23,29 @@ function ErrorBox({message}:{message:string}){return <div className="error" role
 function Loading(){const {t}=useI18n();return <div className="loading"><div className="spinner"/>{t('common.loading')}</div>}
 function Button({children,onClick,variant='primary',disabled=false,type='button'}:{children:ReactNode;onClick?:()=>void;variant?:'primary'|'secondary'|'ghost'|'danger';disabled?:boolean;type?:'button'|'submit'}){return <button className={`btn ${variant}`} type={type} disabled={disabled} onClick={onClick}>{children}</button>}
 
-const localeFlags:Record<Locale,string>={fr:'🇫🇷',mg:'🇲🇬',en:'🇬🇧'};
-function LocalePicker(){const {t,locale,setLocale,localeName}=useI18n();return <div className="language-switch" role="group" aria-label={t('common.language')}>{(['fr','mg','en'] as Locale[]).map(code=><button key={code} type="button" aria-pressed={locale===code} aria-label={`${t('common.language')}: ${localeName[code]}`} title={localeName[code]} onClick={()=>setLocale(code)}><span className="language-flag" aria-hidden="true">{localeFlags[code]}</span><span>{code.toUpperCase()}</span></button>)}</div>}
+const localeFlags:Record<Locale,string>={fr:'/flags/fr.webp',mg:'/flags/mg.png',en:'/flags/en.png'};
+function LocalePicker(){const {t,locale,setLocale,localeName}=useI18n();return <div className="language-switch" role="group" aria-label={t('common.language')}>{(['fr','mg','en'] as Locale[]).map(code=><button key={code} type="button" aria-pressed={locale===code} aria-label={`${t('common.language')}: ${localeName[code]}`} title={localeName[code]} onClick={()=>setLocale(code)}><img className="language-flag" src={localeFlags[code]} alt=""/><span>{code.toUpperCase()}</span></button>)}</div>}
+
+function AnimatedLoginHeadline({t,locale}:{t:(key:string)=>string;locale:Locale}){
+ const headlines=['login.title','login.title.video','login.title.claim'];
+ const [headlineIndex,setHeadlineIndex]=useState(0);const [visibleText,setVisibleText]=useState('');
+ useEffect(()=>{
+  const media=window.matchMedia('(prefers-reduced-motion: reduce)');
+  if(media.matches){setHeadlineIndex(0);setVisibleText(t(headlines[0]));return}
+  const phrases=headlines.map(key=>t(key));let phraseIndex=0;let characterCount=0;let deleting=false;let timer=0;
+  setHeadlineIndex(0);setVisibleText('');
+  const tick=()=>{
+   const phrase=phrases[phraseIndex];
+   if(!deleting){characterCount=Math.min(characterCount+1,phrase.length);setVisibleText(phrase.slice(0,characterCount));if(characterCount===phrase.length){deleting=true;timer=window.setTimeout(tick,1550);return}timer=window.setTimeout(tick,48);return}
+   characterCount=Math.max(characterCount-1,0);setVisibleText(phrase.slice(0,characterCount));
+   if(characterCount===0){deleting=false;phraseIndex=(phraseIndex+1)%phrases.length;setHeadlineIndex(phraseIndex);timer=window.setTimeout(tick,300);return}
+   timer=window.setTimeout(tick,25);
+  };
+  timer=window.setTimeout(tick,280);
+  return()=>window.clearTimeout(timer);
+ },[locale,t]);
+ return <h1 aria-label={t(headlines[headlineIndex])}><span className="auth-headline" aria-hidden="true">{visibleText}</span></h1>;
+}
 
 function ProtectedImage({url,alt,className=''}:{url:string;alt:string;className?:string}){
  const {t}=useI18n();
@@ -49,12 +70,11 @@ function Shell({user,onLogout,children}:{user:User;onLogout:()=>void;children:Re
 }
 
 function Login({onLogin}:{onLogin:(user:User)=>void}){
- const {t,locale}=useI18n();const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[confirmed,setConfirmed]=useState(false);const[development,setDevelopment]=useState(false);const previousLocale=useRef(locale);const[localeTransition,setLocaleTransition]=useState(false);const[headlineIndex,setHeadlineIndex]=useState(0);const headlines=['login.title','login.title.video','login.title.claim'];
+ const {t,locale}=useI18n();const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[confirmed,setConfirmed]=useState(false);const[development,setDevelopment]=useState(false);const previousLocale=useRef(locale);const[localeTransition,setLocaleTransition]=useState(false);
  useEffect(()=>{api<{mode:string}>('/health').then(data=>setDevelopment(import.meta.env.DEV&&data.mode==='development')).catch(()=>{})},[]);
  useEffect(()=>{if(previousLocale.current===locale)return;previousLocale.current=locale;setLocaleTransition(true);const timer=window.setTimeout(()=>setLocaleTransition(false),320);return()=>window.clearTimeout(timer)},[locale]);
- useEffect(()=>{const reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)');if(reduceMotion.matches)return;const timer=window.setInterval(()=>setHeadlineIndex(index=>(index+1)%headlines.length),5200);return()=>window.clearInterval(timer)},[]);
  const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const data=await api<{access_token:string;user:User}>('/auth/login',jsonRequest('POST',{email,password}));localStorage.setItem(TOKEN_KEY,data.access_token);setConfirmed(true);window.setTimeout(()=>onLogin(data.user),480)}catch{setError(t('errors.login'))}finally{setBusy(false)}};
- return <div className={`auth-page ${localeTransition?'locale-transition':''}`}><div className="auth-story"><div className="auth-brand"><Brand/></div><div className="auth-copy"><Pill kind="blue">{t('login.pill')}</Pill><h1 aria-live="polite" aria-atomic="true"><span key={`${locale}-${headlineIndex}`} className="auth-headline">{t(headlines[headlineIndex])}</span></h1><p>{t('login.description')}</p><div className="auth-features"><div><ScanSearch size={20}/> {t('login.feature.analysis')}</div><div><Database size={20}/> {t('login.feature.archive')}</div><div><FileCheck2 size={20}/> {t('login.feature.report')}</div></div></div><div className="auth-footer">{t('login.footer')}</div></div>
+ return <div className={`auth-page ${localeTransition?'locale-transition':''}`}><div className="auth-story"><div className="auth-brand"><Brand/></div><div className="auth-copy"><Pill kind="blue">{t('login.pill')}</Pill><AnimatedLoginHeadline t={t} locale={locale}/><p>{t('login.description')}</p><div className="auth-features"><div><ScanSearch size={20}/> {t('login.feature.analysis')}</div><div><Database size={20}/> {t('login.feature.archive')}</div><div><FileCheck2 size={20}/> {t('login.feature.report')}</div></div></div><div className="auth-footer">{t('login.footer')}</div></div>
  <div className="auth-form-side"><div className={`auth-form-wrap ${confirmed?'is-authenticated':''}`}><div className="mobile-brand"><Brand small/></div><div className="login-locale"><LocalePicker/></div><h2>{t('login.welcome')}</h2><p className="muted">{t('login.prompt')}</p><form onSubmit={submit} className="form-stack" aria-busy={busy}><label>{t('login.email')}<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} disabled={busy||confirmed}/></label><label>{t('login.password')}<input type="password" required value={password} onChange={e=>setPassword(e.target.value)} disabled={busy||confirmed}/></label>{error&&<ErrorBox message={error}/>}<button className={`btn primary auth-submit ${confirmed?'is-success':''}`} type="submit" disabled={busy||confirmed}>{confirmed?<CheckCircle2 size={18}/>:busy?<LoaderCircle className="auth-spinner" size={18}/>:<LockKeyhole size={17}/>}<span>{confirmed?t('login.success'):busy?t('login.busy'):t('login.submit')}</span>{!busy&&!confirmed&&<ArrowRight size={17}/>}</button>{confirmed&&<div className="auth-success" role="status" aria-live="polite">{t('login.success')}</div>}</form>
   {development&&<div className="demo-credentials"><div><Info size={18}/><strong>{t('login.demoTitle')}</strong></div><p>{t('login.demoDescription')}</p><button onClick={()=>{setEmail('journaliste@checker.local');setPassword('Journaliste2026!')}}>{t('login.demoJournalist')} <span>journaliste@checker.local</span></button><button onClick={()=>{setEmail('redaction@checker.local');setPassword('Redaction2026!')}}>{t('login.demoEditor')} <span>redaction@checker.local</span></button></div>}</div></div></div>
 }

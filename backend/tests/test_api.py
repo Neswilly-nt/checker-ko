@@ -272,7 +272,7 @@ def test_video_invalid_container(client,journalist,monkeypatch):
     response=client.post('/api/video/upload',headers=journalist,files={'file':('clip.mp4',b'not a real mp4','video/mp4')})
     assert response.status_code==415
 
-def test_video_extracts_three_frames_and_matches(client,journalist,monkeypatch):
+def test_video_extracts_three_frames_and_matches(client,journalist,upload_case,monkeypatch):
     import json
     from app import main
     jpeg=(ASSETS/'variante_pont.jpg').read_bytes()
@@ -289,11 +289,34 @@ def test_video_extracts_three_frames_and_matches(client,journalist,monkeypatch):
     item=client.get(f'/api/cases/{response.json()["id"]}',headers=journalist).json()
     assert item['video']['duration_seconds']==12
     assert len(item['video']['frames'])==3
+    assert [frame['video_timestamp_seconds'] for frame in item['video']['frames']]==[3.0,6.0,9.0]
     assert item['video']['sha256']
+    first,second=item['video']['frames'][:2]
+    comparison=client.get(f"/api/cases/{item['id']}/compare?left_media_id={first['id']}&right_media_id={second['id']}",headers=journalist)
+    assert comparison.status_code==200 and comparison.json()['phash_hamming_distance']==0
+    assert 'ne démontre' in comparison.json()['interpretation']
+    saved=client.post(f"/api/cases/{item['id']}/evidence",headers=journalist,json={'title':'Image-clé à 3 s','note':'Image extraite de la vidéo, contexte à examiner.','relation_type':'contexte','media_id':first['id']})
+    assert saved.status_code==201 and saved.json()['media_id']==first['id']
+    cross_case=client.post(f"/api/cases/{item['id']}/evidence",headers=journalist,json={'title':'Autre image','note':'Cette image appartient à un autre dossier.', 'relation_type':'contexte','media_id':client.get(f"/api/cases/{upload_case}",headers=journalist).json()['media']['id']})
+    assert cross_case.status_code==403
+    assert client.get(f"/api/cases/{item['id']}",headers=journalist).json()['evidence'][0]['media_id']==first['id']
     for frame in item['video']['frames']:
         matches=client.get(f'/api/cases/{item["id"]}/frames/{frame["id"]}/matches',headers=journalist)
         assert matches.status_code==200
         assert any('passerelle' in match['title'] for match in matches.json()['items'])
+
+def test_social_publication_provenance_is_optional_and_owner_only(client,journalist,editor,upload_case):
+    case_id=upload_case
+    created=client.post(f'/api/cases/{case_id}/social-posts',headers=journalist,json={
+        'platform':'TikTok','original_url':'https://www.tiktok.com/@example/video/123',
+        'declared_account':'@example','published_at':'2026-01-12T10:30','capture_date':'2026-01-10',
+        'observation':'La date affichée ne confirme pas la date de captation.'})
+    assert created.status_code==201
+    post=client.get(f'/api/cases/{case_id}',headers=journalist).json()['social_posts'][0]
+    assert post['published_at']=='2026-01-12T10:30' and post['capture_date']=='2026-01-10'
+    forbidden=client.post(f'/api/cases/{case_id}/social-posts',headers=editor,json={
+        'platform':'Facebook','original_url':'https://facebook.com/example'})
+    assert forbidden.status_code==403
 
 def test_real_mp4_and_c2pa_tools(client,journalist,monkeypatch,tmp_path):
     from pathlib import Path

@@ -1,4 +1,4 @@
-﻿# Checker-ko v0.4.4
+# Checker-ko v0.7.1
 
 Checker-ko est un outil local d'aide à la vérification journalistique. Il rassemble les dossiers, les médias, les sources et les preuves, puis laisse au journaliste la rédaction de la conclusion. Il ne détermine pas automatiquement la véracité d'une affirmation.
 
@@ -10,10 +10,10 @@ Checker-ko est un outil local d'aide à la vérification journalistique. Il rass
 - Analyse MP4 et extraction d'images clés avec FFmpeg et ffprobe.
 - Comparaison avec les archives internes et recherche inversée assistée par le journaliste.
 - Carnet de preuves, conclusion humaine, relecture facultative et rapport imprimable en PDF depuis le navigateur.
-- Annuaire de cinq institutions malgaches partiellement vérifiées et référentiel des 24 régions. Les dix anciennes fiches fictives restent archivées pour les dossiers historiques.
+- Annuaire de cinq institutions malgaches partiellement v?rifi?es, gestion des contacts publics avec r?f?rences et dates, archivage r?versible des fiches et r?f?rentiel des 24 r?gions.
 - Veille RSS Actualités avec une source malgache réellement vérifiée, collecte journalisée, filtres et création idempotente d'un dossier de vérification. Voir [les flux](docs/FLUX_ACTUALITES.md).
 - Évaluation de source par preuve : critères rapides et avancés, portée documentaire, appréciation explicable et historique. Voir [la méthodologie](docs/METHODOLOGIE_EVALUATION_SOURCES.md).
-- Catalogue « Chiffres et documents » avec trois publications statistiques publiques datées, filtres et ajout au carnet comme contexte. Aucune observation chiffrée non vérifiée n’est affichée. Voir [les références](docs/SOURCES_STATISTIQUES.md) et [les changements v0.7](docs/CHANGEMENTS_V07.md).
+- Catalogue de trois publications document?es avec observations persistantes saisies par la r?daction (valeur, unit?, ann?e, r?gion et r?f?rence pr?cise de page/table). Elles s?ajoutent au carnet comme contexte ; aucune valeur n?est pr?remplie. Voir les r?f?rences dans docs/SOURCES_STATISTIQUES.md et les changements v0.7.1 dans docs/CHANGEMENTS_V071.md.
 
 Les résultats techniques et les fiches de l'annuaire servent au recoupement : aucun résultat ne constitue à lui seul une preuve de véracité. Les images de `backend/demo_assets/` sont des exemples fictifs nécessaires aux tests.
 
@@ -90,4 +90,4 @@ Les tests API utilisent un répertoire temporaire et n'ouvrent pas la base priv�
 
 Cette version reste destinée à une utilisation locale. Avant toute exposition à Internet, il faut notamment revoir l'authentification et la gestion des sessions (`localStorage` en développement), ajouter HTTPS, des limites de connexion, des migrations de base de données et une revue de sécurité. Les fichiers médias originaux peuvent contenir des métadonnées sensibles. Une correspondance pHash et un manifeste C2PA ne valident pas le contenu d'une scène. Les contacts et documents des institutions doivent être vérifiés pour chaque enquête.
 
-Pour contribuer, consulter [le flux Git de l'équipe](docs/GIT_WORKFLOW.md). Documentation complémentaire : [installation Windows](docs/INSTALLATION_WINDOWS.md), [sources de Madagascar](docs/SOURCES_MADAGASCAR.md), [limitations](docs/LIMITES.md), [historique v0.4.3](docs/CHANGEMENTS_V043.md) et [accueil v0.4.4](docs/UX_ACCUEIL_V044.md).
+Pour contribuer, consulter [le flux Git de l'équipe](docs/GIT_WORKFLOW.md). Documentation complémentaire : [installation Windows](docs/INSTALLATION_WINDOWS.md), [sources de Madagascar](docs/SOURCES_MADAGASCAR.md), [limitations](docs/LIMITES.md), [changement v0.7.1](docs/CHANGEMENTS_V071.md), [historique v0.4.3](docs/CHANGEMENTS_V043.md) et [accueil compact](docs/UX_ACCUEIL_V044.md).

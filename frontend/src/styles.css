@@ -240,17 +240,18 @@
 .auth-features>div{min-height:42px}
 .auth-features svg{padding:9px}
 .auth-footer{margin-top:18px}
-.auth-theme-light::before,.auth-theme-dark::before{background:linear-gradient(90deg,rgba(235,246,250,.86) 0%,rgba(233,244,249,.77) 42%,rgba(229,243,250,.3) 67%,rgba(226,241,249,.38) 100%)}
-.auth-theme-light .auth-story,.auth-theme-dark .auth-story{background:linear-gradient(120deg,rgba(237,248,251,.62),rgba(237,248,251,.34))}
-.auth-theme-light .auth-brand .brand strong,.auth-theme-light .auth-brand .brand span,.auth-theme-dark .auth-brand .brand strong,.auth-theme-dark .auth-brand .brand span{color:#17324d}
-.auth-theme-light .auth-copy h1,.auth-theme-dark .auth-copy h1{color:#17324d}
-.auth-theme-light .auth-copy>p,.auth-theme-dark .auth-copy>p{color:#334e61}
-.auth-theme-light .auth-copy .pill,.auth-theme-dark .auth-copy .pill{background:rgba(250,253,255,.84);border-color:rgba(42,115,132,.24);color:#174866}
-.auth-theme-light .auth-features>div,.auth-theme-dark .auth-features>div{color:#17324d}
-.auth-theme-light .auth-features svg,.auth-theme-dark .auth-features svg{background:rgba(225,246,242,.9);color:#087d77}
-.auth-theme-light .auth-footer,.auth-theme-dark .auth-footer,.auth-theme-light .auth-proof-mark,.auth-theme-dark .auth-proof-mark{color:#38556c}
+.auth-theme-light::before,.auth-theme-dark::before{background:linear-gradient(90deg,rgba(2,20,32,.84) 0%,rgba(4,28,42,.72) 42%,rgba(14,55,78,.18) 67%,rgba(8,35,53,.17) 100%)}
+.auth-theme-light .auth-story,.auth-theme-dark .auth-story{background:linear-gradient(120deg,rgba(1,24,36,.38),rgba(1,24,36,.1))}
+.auth-theme-light .auth-brand .brand strong,.auth-theme-light .auth-brand .brand span,.auth-theme-dark .auth-brand .brand strong,.auth-theme-dark .auth-brand .brand span{color:#fff}
+.auth-theme-light .auth-copy h1,.auth-theme-dark .auth-copy h1{color:#fff}
+.auth-theme-light .auth-copy>p,.auth-theme-dark .auth-copy>p{color:#d1e2ec}
+.auth-theme-light .auth-copy .pill,.auth-theme-dark .auth-copy .pill{background:rgba(11,47,66,.72);border-color:rgba(117,205,202,.3);color:#c4efeb}
+.auth-theme-light .auth-features>div,.auth-theme-dark .auth-features>div{color:#f2f8fb}
+.auth-theme-light .auth-features svg,.auth-theme-dark .auth-features svg{background:rgba(14,96,92,.42);color:#64e0c2}
+.auth-theme-light .auth-footer,.auth-theme-dark .auth-footer,.auth-theme-light .auth-proof-mark,.auth-theme-dark .auth-proof-mark{color:#ccdae3}
 .auth-theme-light .theme-toggle{color:#087d77;background:#fff}
 .brand .brand-logo{object-fit:cover;border-radius:50%;clip-path:circle(41% at 50% 47%);transform:scale(1.15)}
+.auth-brand .brand-logo{transform:translateY(-8px) scale(1.15)}
 .auth-theme-dark .auth-form-wrap{color-scheme:dark;color:#e9f1f5;background:rgba(15,32,47,.93);border-color:rgba(169,199,213,.3);box-shadow:0 28px 90px rgba(3,14,25,.35)}
 .auth-theme-dark .auth-form-wrap h2{color:#f3f8fb}
 .auth-theme-dark .auth-form-wrap>.muted{color:#aec3d0}

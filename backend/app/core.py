@@ -17,7 +17,7 @@ from uuid import uuid4
 from urllib.parse import urlsplit
 from fastapi import HTTPException
 from PIL import Image, ImageOps, UnidentifiedImageError
-from sqlalchemy import create_engine, ForeignKey, String, DateTime, Integer, Boolean, Text, event
+from sqlalchemy import create_engine, ForeignKey, String, DateTime, Integer, Boolean, Text, event, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 import jwt
 from .regions import NATIONAL
@@ -182,6 +182,38 @@ class DirectorySource(Base):
     contact_email: Mapped[str|None] = mapped_column(String(250), nullable=True)
     contact_phone: Mapped[str|None] = mapped_column(String(80), nullable=True)
     verification_status: Mapped[str] = mapped_column(String(40), default='a_actualiser')
+
+class DirectoryContact(Base):
+    """Public professional contacts with an explicit verification reference."""
+    __tablename__ = 'directory_contacts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey('source_directory.id'), index=True)
+    name: Mapped[str] = mapped_column(String(180), default='')
+    role: Mapped[str] = mapped_column(String(180), default='')
+    email: Mapped[str|None] = mapped_column(String(250), nullable=True)
+    phone: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    reference_url: Mapped[str] = mapped_column(String(500))
+    verified_at: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class StatisticalObservation(Base):
+    """Persisted indicator, with publication snapshot and exact document locator."""
+    __tablename__ = 'statistical_observations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    publication_key: Mapped[str] = mapped_column(String(80), index=True)
+    source_title: Mapped[str] = mapped_column(String(300))
+    source_url: Mapped[str] = mapped_column(String(500))
+    indicator: Mapped[str] = mapped_column(String(250))
+    value: Mapped[str] = mapped_column(String(40))
+    unit: Mapped[str] = mapped_column(String(80))
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    region: Mapped[str|None] = mapped_column(String(80), nullable=True)
+    source_locator: Mapped[str] = mapped_column(String(300))
+    created_by: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+Index('ix_stat_obs_publication_year_region', StatisticalObservation.publication_key, StatisticalObservation.year, StatisticalObservation.region)
 
 class Audit(Base):
     __tablename__ = 'audit_events'

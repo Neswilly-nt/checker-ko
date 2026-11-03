@@ -6,6 +6,9 @@ import shutil
 import hashlib
 import subprocess
 import tempfile
+import re
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 from io import BytesIO
 from pathlib import Path
@@ -17,14 +20,14 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from .core import (Analysis, Case, Video, DirectorySource, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
+from .core import (Analysis, Case, Video, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
     now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.7.0')
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.7.1')
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
 
 @app.on_event('startup')
@@ -96,6 +99,27 @@ class DirectoryIn(BaseModel):
     contact_email:str|None=Field(default=None,max_length=250)
     contact_phone:str|None=Field(default=None,max_length=80)
     verification_status:Literal['verifiees','partiellement_verifiees','a_actualiser']='a_actualiser'
+    last_checked_at:str|None=Field(default=None,max_length=10)
+
+class DirectoryContactIn(BaseModel):
+    name:str=Field(default='',max_length=180)
+    role:str=Field(default='',max_length=180)
+    email:str|None=Field(default=None,max_length=250)
+    phone:str|None=Field(default=None,max_length=80)
+    reference_url:str=Field(min_length=8,max_length=500)
+    verified_at:str=Field(min_length=10,max_length=10)
+
+class ArchiveIn(BaseModel):
+    archived:bool
+
+class StatisticalObservationIn(BaseModel):
+    publication_key:str=Field(min_length=1,max_length=80)
+    indicator:str=Field(min_length=2,max_length=250)
+    value:str=Field(min_length=1,max_length=40)
+    unit:str=Field(min_length=1,max_length=80)
+    year:int=Field(ge=1800,le=2200)
+    region:str|None=Field(default=None,max_length=80)
+    source_locator:str=Field(min_length=2,max_length=300)
 
 class ClaimIn(BaseModel):
     claim_text:str=Field(min_length=3,max_length=8000)
@@ -472,13 +496,39 @@ def preview(media_id:int,db:Session=Depends(db_session),user:User=Depends(curren
         buf.seek(0)
     return StreamingResponse(buf,media_type='image/jpeg',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
-def source_view(s):
+def source_view(s,db:Session):
     return {'id':s.id,'organization':s.organization,'acronym':s.acronym,'organization_type':s.organization_type,
         'sector':s.sector,'description':s.description,'website_url':s.website_url,
         'geographic_scope':s.geographic_scope,'region':s.region,'last_checked_at':s.last_checked_at,
         'reference_url':s.reference_url,'resources':json.loads(s.resources_json or '[]'),
         'contact_email':s.contact_email,'contact_phone':s.contact_phone,
+        'contacts':[contact_view(contact) for contact in db.query(DirectoryContact).filter_by(source_id=s.id).order_by(DirectoryContact.id).all()],
         'verification_status':s.verification_status,'demo_only':s.demo_only,'archived':s.archived}
+
+def contact_view(contact):
+    return {'id':contact.id,'name':contact.name,'role':contact.role,'email':contact.email,'phone':contact.phone,
+        'reference_url':contact.reference_url,'verified_at':contact.verified_at}
+
+def checked_date(value,field_name):
+    if not value:return None
+    try:return date.fromisoformat(value).isoformat()
+    except ValueError as exc:raise HTTPException(422,f'{field_name} doit être une date ISO valide') from exc
+
+def validated_contact(data:DirectoryContactIn):
+    email=(data.email or '').strip() or None
+    phone=(data.phone or '').strip() or None
+    if not email and not phone:raise HTTPException(422,'Indiquez un courriel ou un téléphone professionnel public')
+    if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email):raise HTTPException(422,'Courriel professionnel invalide')
+    reference_url=valid_url(data.reference_url)
+    if not reference_url:raise HTTPException(422,'Une référence publique de vérification est requise')
+    verified_at=checked_date(data.verified_at,'La date de vérification')
+    return {'name':data.name.strip(),'role':data.role.strip(),'email':email,'phone':phone,'reference_url':reference_url,'verified_at':verified_at}
+
+def validate_organization_contact(email,phone,reference_url,last_checked_at):
+    if (email or phone) and (not reference_url or not last_checked_at):
+        raise HTTPException(422,'Une coordonnée professionnelle exige une référence publique et une date de vérification')
+    if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email.strip()):
+        raise HTTPException(422,'Courriel professionnel invalide')
 
 @app.get('/api/sources')
 def sources(sector:str='',region:str='',organization_type:str='',q:str='',include_archived:bool=False,db:Session=Depends(db_session),user:User=Depends(current_user)):
@@ -490,27 +540,61 @@ def sources(sector:str='',region:str='',organization_type:str='',q:str='',includ
     if organization_type:stmt=stmt.filter_by(organization_type=organization_type[:80])
     if q:stmt=stmt.filter(DirectorySource.organization.ilike('%'+q[:100]+'%'))
     rows=stmt.order_by(DirectorySource.organization.asc()).limit(200).all()
-    return {'items':[source_view(s) for s in rows]}
+    return {'items':[source_view(s,db) for s in rows]}
 
 @app.get('/api/statistics')
-def statistical_publications(sector:str='',q:str='',user:User=Depends(current_user)):
-    """Publications documentées; les observations restent vides sans données vérifiées."""
+def statistical_publications(sector:str='',q:str='',db:Session=Depends(db_session),user:User=Depends(current_user)):
+    """Publication references and persisted observations with their exact provenance."""
     query=q.strip().casefold()[:100]
-    items=[publication_view(item) for item in PUBLICATIONS
-        if (not sector or item['sector']==sector)
-        and (not query or query in ' '.join(str(item.get(k) or '') for k in ('title','producer','sector','description','reference_year')).casefold())]
-    return {'items':items,'observation_count':0}
+    items=[]
+    for publication in PUBLICATIONS:
+        if sector and publication['sector']!=sector:continue
+        item=publication_view(publication)
+        rows=db.query(StatisticalObservation).filter_by(publication_key=item['key']).order_by(StatisticalObservation.year.desc(),StatisticalObservation.id.desc()).all()
+        item['observations']=[observation_view(row) for row in rows]
+        searchable=' '.join(str(item.get(k) or '') for k in ('title','producer','sector','description','reference_year')).casefold()
+        searchable+=' '+' '.join(row['indicator'].casefold() for row in item['observations'])
+        if query and query not in searchable:continue
+        items.append(item)
+    return {'items':items,'observation_count':sum(len(item['observations']) for item in items)}
+
+def observation_view(row):
+    return {'id':row.id,'publication_key':row.publication_key,'source_title':row.source_title,'source_url':row.source_url,
+        'indicator':row.indicator,'value':row.value,'unit':row.unit,'year':row.year,'region':row.region,
+        'source_locator':row.source_locator,'created_at':row.created_at}
+
+@app.post('/api/statistics/observations',status_code=201)
+def add_statistical_observation(data:StatisticalObservationIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
+    publication=next((item for item in PUBLICATIONS if item['key']==data.publication_key),None)
+    if not publication:raise HTTPException(422,'Choisissez une publication documentée du catalogue')
+    try:
+        value=Decimal(data.value.strip())
+        if not value.is_finite() or len(value.as_tuple().digits)>18 or abs(value.as_tuple().exponent)>8:raise InvalidOperation
+    except (InvalidOperation,ValueError):raise HTTPException(422,'La valeur doit être un nombre décimal fini')
+    normalized=format(value,'f')
+    row=StatisticalObservation(publication_key=publication['key'],source_title=publication['title'],source_url=valid_url(publication['url']),
+        indicator=data.indicator.strip(),value=normalized,unit=data.unit.strip(),year=data.year,region=checked_region(data.region),
+        source_locator=data.source_locator.strip(),created_by=user.id)
+    db.add(row);db.commit();db.refresh(row)
+    return {'id':row.id}
 
 @app.get('/api/sources/{source_id}')
 def source_details(source_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
     source=db.get(DirectorySource,source_id)
     if not source or (source.archived and user.role!='editor'):raise HTTPException(404,'Source introuvable')
-    return source_view(source)
+    return source_view(source,db)
 
 @app.post('/api/sources',status_code=201)
 def add_source(data:DirectoryIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
     if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
-    s=DirectorySource(organization=data.organization,acronym=data.acronym,organization_type=data.organization_type,sector=data.sector,description=data.description,website_url=valid_url(data.website_url),geographic_scope=data.geographic_scope,region=checked_region(data.region),reference_url=valid_url(data.reference_url),contact_email=data.contact_email,contact_phone=data.contact_phone,last_checked_at=None,verification_status='a_actualiser',demo_only=False,archived=False)
+    last_checked_at=checked_date(data.last_checked_at,'La date de vérification')
+    reference_url=valid_url(data.reference_url)
+    if data.verification_status!='a_actualiser' and (not last_checked_at or not reference_url):raise HTTPException(422,'Une référence publique et sa date sont requises pour valider la fiche')
+    contact_email=(data.contact_email or '').strip() or None
+    contact_phone=(data.contact_phone or '').strip() or None
+    validate_organization_contact(contact_email,contact_phone,reference_url,last_checked_at)
+    s=DirectorySource(organization=data.organization,acronym=data.acronym,organization_type=data.organization_type,sector=data.sector,description=data.description,website_url=valid_url(data.website_url),geographic_scope=data.geographic_scope,region=checked_region(data.region),reference_url=reference_url,contact_email=contact_email,contact_phone=contact_phone,last_checked_at=last_checked_at,verification_status=data.verification_status,demo_only=False,archived=False)
     db.add(s);db.commit();return {'id':s.id}
 
 @app.put('/api/sources/{source_id}')
@@ -518,9 +602,42 @@ def edit_source(source_id:int,data:DirectoryIn,db:Session=Depends(db_session),us
     if user.role!='editor': raise HTTPException(403,'Réservé à la rédaction')
     source=db.get(DirectorySource,source_id)
     if not source: raise HTTPException(404,'Source introuvable')
+    last_checked_at=checked_date(data.last_checked_at,'La date de vérification')
+    reference_url=valid_url(data.reference_url) if 'reference_url' in data.model_fields_set else source.reference_url
+    final_checked=last_checked_at if 'last_checked_at' in data.model_fields_set else source.last_checked_at
+    if data.verification_status!='a_actualiser' and (not final_checked or not reference_url):raise HTTPException(422,'Une référence publique et sa date sont requises pour valider la fiche')
+    contact_email=(data.contact_email or '').strip() or None if 'contact_email' in data.model_fields_set else source.contact_email
+    contact_phone=(data.contact_phone or '').strip() or None if 'contact_phone' in data.model_fields_set else source.contact_phone
+    validate_organization_contact(contact_email,contact_phone,reference_url,final_checked)
     source.organization=data.organization;source.sector=data.sector;source.description=data.description
     source.website_url=valid_url(data.website_url);source.geographic_scope=data.geographic_scope
     source.acronym=data.acronym;source.organization_type=data.organization_type;source.region=checked_region(data.region)
-    source.reference_url=valid_url(data.reference_url);source.contact_email=data.contact_email;source.contact_phone=data.contact_phone
-    source.last_checked_at=None;source.verification_status='a_actualiser';db.commit()
+    source.reference_url=reference_url;source.contact_email=contact_email;source.contact_phone=contact_phone
+    source.last_checked_at=final_checked;source.verification_status=data.verification_status;db.commit()
     return {'id':source.id}
+
+@app.patch('/api/sources/{source_id}/archive')
+def archive_source(source_id:int,data:ArchiveIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
+    source=db.get(DirectorySource,source_id)
+    if not source:raise HTTPException(404,'Source introuvable')
+    if source.demo_only:raise HTTPException(409,'Les fiches de démonstration historiques ne peuvent pas être modifiées')
+    source.archived=data.archived;db.commit()
+    return {'id':source.id,'archived':source.archived}
+
+@app.post('/api/sources/{source_id}/contacts',status_code=201)
+def add_directory_contact(source_id:int,data:DirectoryContactIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
+    source=db.get(DirectorySource,source_id)
+    if not source or source.demo_only:raise HTTPException(404,'Source introuvable')
+    contact=DirectoryContact(source_id=source_id,**validated_contact(data));db.add(contact);db.commit();db.refresh(contact)
+    return contact_view(contact)
+
+@app.put('/api/sources/{source_id}/contacts/{contact_id}')
+def edit_directory_contact(source_id:int,contact_id:int,data:DirectoryContactIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
+    contact=db.get(DirectoryContact,contact_id)
+    if not contact or contact.source_id!=source_id:raise HTTPException(404,'Contact introuvable')
+    for key,value in validated_contact(data).items():setattr(contact,key,value)
+    contact.updated_at=now();db.commit();db.refresh(contact)
+    return contact_view(contact)

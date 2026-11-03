@@ -60,6 +60,7 @@ def test_phash_matches_and_different_image(client,journalist,upload_case):
 def test_c2pa_unavailable_never_means_absent(monkeypatch):
     monkeypatch.setenv('C2PATOOL_PATH','C:/missing/c2patool.exe')
     monkeypatch.setattr('app.core.shutil.which', lambda _:None)
+    monkeypatch.setattr('app.core.tool_path',lambda *_:None)
     tool,status,claim,warnings=c2pa_analyze('/unused/path.jpg')
     assert (tool,status)==('outil_non_installe','indisponible')
     assert claim['signature']=='non_evaluee'
@@ -153,6 +154,52 @@ def test_statistical_catalog_has_documented_publications_without_fabricated_obse
     assert len(client.get('/api/statistics?sector=sant%C3%A9',headers=journalist).json()['items'])==1
     assert len(client.get('/api/statistics?q=RGPH',headers=journalist).json()['items'])==1
 
+def test_public_contacts_are_traceable_and_directory_archiving_preserves_case_evidence(client,journalist,editor):
+    payload={'organization':'Organisme de test','sector':'santé','description':'Fiche synthétique de test',
+        'reference_url':'https://example.org/contact-directory','verification_status':'partiellement_verifiees','last_checked_at':'2026-11-03'}
+    assert client.post('/api/sources',headers=journalist,json=payload).status_code==403
+    assert client.post('/api/sources',headers=editor,json={**payload,'reference_url':None,'last_checked_at':None}).status_code==422
+    source=client.post('/api/sources',headers=editor,json=payload)
+    assert source.status_code==201,source.text
+    source_id=source.json()['id']
+    contact={'name':'Contact de test','role':'Accueil','email':'contact@example.test','phone':None,
+        'reference_url':'https://example.org/contact-directory','verified_at':'2026-11-03'}
+    assert client.post(f'/api/sources/{source_id}/contacts',headers=journalist,json=contact).status_code==403
+    assert client.post(f'/api/sources/{source_id}/contacts',headers=editor,json={**contact,'reference_url':None}).status_code==422
+    assert client.post(f'/api/sources/{source_id}/contacts',headers=editor,json={**contact,'email':None,'phone':None}).status_code==422
+    created=client.post(f'/api/sources/{source_id}/contacts',headers=editor,json=contact)
+    assert created.status_code==201,created.text
+    assert created.json()['reference_url']==contact['reference_url'] and created.json()['verified_at']==contact['verified_at']
+    edited=client.put(f"/api/sources/{source_id}/contacts/{created.json()['id']}",headers=editor,json={**contact,'role':'Standard téléphonique'})
+    assert edited.status_code==200 and edited.json()['role']=='Standard téléphonique'
+    case=client.post('/api/cases',headers=journalist,json={'claim_text':'Source de test à conserver','sector':'santé'}).json()
+    evidence=client.post(f"/api/cases/{case['id']}/evidence",headers=journalist,json={'title':'Fiche organisme','url':payload['reference_url'],'note':'Référence conservée dans le dossier.','relation_type':'contexte'})
+    assert evidence.status_code==201
+    assert client.patch(f'/api/sources/{source_id}/archive',headers=journalist,json={'archived':True}).status_code==403
+    archived=client.patch(f'/api/sources/{source_id}/archive',headers=editor,json={'archived':True})
+    assert archived.status_code==200 and archived.json()['archived'] is True
+    assert client.get(f'/api/sources/{source_id}',headers=journalist).status_code==404
+    assert source_id in {item['id'] for item in client.get('/api/sources?include_archived=true',headers=editor).json()['items']}
+    assert client.get(f"/api/cases/{case['id']}",headers=journalist).json()['evidence'][0]['url']==payload['reference_url']
+    restored=client.patch(f'/api/sources/{source_id}/archive',headers=editor,json={'archived':False})
+    assert restored.status_code==200 and client.get(f'/api/sources/{source_id}',headers=journalist).status_code==200
+
+def test_statistical_observations_require_editor_and_keep_document_provenance(client,journalist,editor):
+    payload={'publication_key':'health-yearbook-2024','indicator':'Indicateur de test','value':'12.5','unit':'pour 100 000',
+        'year':2023,'region':'Analamanga','source_locator':'p. 12, tableau 2'}
+    assert client.post('/api/statistics/observations',headers=journalist,json=payload).status_code==403
+    assert client.post('/api/statistics/observations',headers=editor,json={**payload,'publication_key':'invented'}).status_code==422
+    assert client.post('/api/statistics/observations',headers=editor,json={**payload,'value':'NaN'}).status_code==422
+    created=client.post('/api/statistics/observations',headers=editor,json=payload)
+    assert created.status_code==201,created.text
+    response=client.get('/api/statistics?q=Indicateur%20de%20test',headers=journalist)
+    assert response.status_code==200 and response.json()['observation_count']==1
+    observation=response.json()['items'][0]['observations'][0]
+    assert observation['value']=='12.5' and observation['year']==2023 and observation['region']=='Analamanga'
+    assert observation['source_locator']==payload['source_locator']
+    assert observation['source_url'].startswith('https://www.instat.mg/')
+    assert client.post('/api/statistics/observations',headers=editor,json={**payload,'region':'Région inventée'}).status_code==422
+
 def test_regions_and_case_validation(client,journalist):
     regions=client.get('/api/regions',headers=journalist)
     assert regions.status_code==200 and len(regions.json()['items'])==24
@@ -215,6 +262,7 @@ def test_video_missing_ffmpeg(client,journalist,monkeypatch):
     monkeypatch.setenv('FFMPEG_PATH','C:/missing/ffmpeg.exe')
     monkeypatch.setenv('FFPROBE_PATH','C:/missing/ffprobe.exe')
     monkeypatch.setattr('app.main.shutil.which',lambda name:None if name in ('ffmpeg','ffprobe') else None)
+    monkeypatch.setattr('app.main.tool_path',lambda *_:None)
     response=client.post('/api/video/upload',headers=journalist,files={'file':('clip.mp4',b'\0\0\0\x18ftypisom','video/mp4')})
     assert response.status_code==503
     assert 'FFmpeg' in response.json()['detail']

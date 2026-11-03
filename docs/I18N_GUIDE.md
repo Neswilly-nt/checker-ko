@@ -1,25 +1,31 @@
-# Guide i18n Checker-ko
+# Guide i18n de Checker-ko
 
-## Langues prises en charge
+## Langues et ressources
 
-Les ressources sont des dictionnaires JSON plats dans `frontend/src/locales/` : `fr.json`, `mg.json` et `en.json`. Les clés sont stables et les ressources doivent avoir exactement les mêmes clés. Le français sert de langue par défaut et de secours.
+L’interface propose le français (`fr`), le malagasy (`mg`) et l’anglais (`en`). Les dictionnaires JSON plats se trouvent dans `frontend/src/locales/`. Le français est la langue initiale et de secours. Les trois fichiers doivent garder les mêmes clés et les mêmes paramètres `{{name}}`.
 
-## Utilisation dans React
+## Traduire les vues React
 
-Les vues sous `I18nProvider` utilisent `useI18n()` :
+Pour une chaîne statique dans JSX, utiliser le composant `<Tx id="section.key" />`. Pour une chaîne construite ou utilisée dans une fonction, utiliser `const { t } = useI18n()` puis `t('section.key', { name })`. Ajouter chaque clé aux trois dictionnaires. `npm run i18n:check` vérifie les clés, les paramètres, les textes visibles JSX et les appels aux clés de traduction.
 
-```tsx
-const { t, locale, setLocale, formatDate, errorMessage } = useI18n();
-```
+Le changement de langue met à jour le rendu React sans recharger la page. Il ne démonte pas les formulaires et ne remplace pas les valeurs saisies. Les erreurs HTTP connues passent par `errorMessage`; éviter d’afficher directement des messages techniques bruts.
 
-`setLocale` conserve le rendu et les champs montés. `formatDate` adapte le format à la langue choisie. `errorMessage` traduit les erreurs HTTP connues et masque les détails bruts pour les autres erreurs.
+## Terminologie couverte
 
-Pour ajouter une chaîne, ajouter la même clé et une valeur dans les trois JSON, employer `t('section.key')` pour le texte visible, puis lancer `npm run i18n:check`. Les paramètres s'écrivent `{{name}}`.
+Les libellés communs, la navigation, les formulaires et états, le répertoire de sources, les observations statistiques, l’actualité, les vérifications photo/vidéo/texte, les évaluations, les conclusions, la comparaison et les rapports utilisent les ressources trilingues. Les noms de plateformes, formats, marques et organismes gardent leur nom officiel.
 
-## Données qui restent originales
+Le malagasy emploie notamment « Loharano » pour les sources, « Fanombanana » pour l’évaluation, « Fehin-kevitra » pour la conclusion et « Porofon-kevitra » pour les éléments de preuve. Ces choix sont cohérents dans l’interface, mais demandent encore une relecture par un journaliste malgachophone, en particulier pour les libellés d’évaluation des sources, les états de conclusion et les messages de validation.
 
-Ne pas traduire ou modifier les affirmations, les textes de preuves, les notes, les titres de publications, les noms officiels d'organismes, les noms de régions et les justifications de conclusion. Ces champs sont des données journalistiques. La traduction concerne les commandes et libellés de l'interface.
+## Contenus qui restent originaux
 
-## Relecture
+Ne pas traduire automatiquement les affirmations, titres et textes de publications, notes et preuves, verdicts saisis, justifications, coordonnées, noms et descriptions d’institutions, ni noms de régions. Ces champs proviennent des dossiers et documents de référence. Une future traduction de description institutionnelle devra utiliser des champs localisés distincts, être attribuée à une source et ne jamais remplacer le texte original. Aucune traduction de contenu institutionnel n’est considérée comme officiellement validée ici.
 
-La traduction malagasy est une base de travail; une personne maîtrisant le malagasy rédactionnel et les usages journalistiques de Madagascar doit la relire avant diffusion. Les noms d'organismes officiels et les régions malgaches doivent rester tels qu'ils sont fournis par les sources de référence.
+Les libellés de secteurs administratifs connus sont traduits à l’affichage seulement : leur valeur d’origine est conservée lors des filtres et des enregistrements. Les dates suivent la langue active.
+
+## Relecture humaine requise
+
+La version malagasy est une traduction de travail, pas une validation éditoriale officielle. Avant diffusion, demander une relecture à une personne maîtrisant le malagasy rédactionnel et les usages journalistiques de Madagascar. Elle devrait vérifier la terminologie statistique, les formulations de conclusion et d’évaluation, ainsi que la clarté des messages courts sur mobile. Les traductions anglaises et françaises sont également à relire pour le style rédactionnel.
+
+## Validation
+
+Depuis `frontend/`, lancer `npm run i18n:check`, `npm run check` et `npm run build`. Le contrôle des textes JSX est une détection pragmatique : les chaînes métier ou données injectées au runtime ne sont pas traduisibles comme des libellés d’interface et doivent rester intactes.

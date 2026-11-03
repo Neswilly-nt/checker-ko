@@ -1,7 +1,7 @@
 ﻿import {useEffect,useState,useCallback,useRef, type FormEvent, type ReactNode} from 'react';
 import {BrowserRouter,NavLink,Navigate,Route,Routes,useNavigate,useParams,useLocation,Link} from 'react-router-dom';
 import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronRight,Clock3,ExternalLink,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Image as ImageIcon,Info,LayoutDashboard,LockKeyhole,LogOut,Menu,Plus,Printer,RefreshCcw,Search,ShieldCheck,ShieldQuestion,Trash2,UploadCloud,X,AlertCircle,Eye,ScanSearch,Database,Send} from 'lucide-react';
-import {api,ApiError,getToken,jsonRequest,TOKEN_KEY} from './api';
+import {api,ApiError,jsonRequest} from './api';
 import type {User,Case,CaseItem,Match,Evidence,Verdict,NewsItem} from './types';
 import SourcesDirectory from './SourcesDirectory';
 import {loadRegions,type RegionCatalog} from './regions';
@@ -29,7 +29,7 @@ function ProtectedImage({url,alt,className=''}:{url:string;alt:string;className?
  const {t}=useI18n();
  const [src,setSrc]=useState('');const [failed,setFailed]=useState(false);
  useEffect(()=>{let active=true;let objectUrl='';setFailed(false);setSrc('');
-  fetch(url,{headers:{'Authorization':`Bearer ${getToken()||''}`}}).then(r=>{if(!r.ok)throw new Error('image');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{if(active)setFailed(true)});
+  fetch(url,{credentials:'same-origin',cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('image');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{if(active)setFailed(true)});
   return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
  },[url]);
  if(failed)return <div className={`image-fallback ${className}`}><FileImage size={34}/>{t('common.previewUnavailable')}</div>;
@@ -50,7 +50,7 @@ function Shell({user,onLogout,children}:{user:User;onLogout:()=>void;children:Re
 function Login({onLogin}:{onLogin:(user:User)=>void}){
  const {t}=useI18n();const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[development,setDevelopment]=useState(false);
  useEffect(()=>{api<{mode:string}>('/health').then(data=>setDevelopment(data.mode==='development')).catch(()=>{})},[]);
- const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const data=await api<{access_token:string;user:User}>('/auth/login',jsonRequest('POST',{email,password}));localStorage.setItem(TOKEN_KEY,data.access_token);onLogin(data.user)}catch{setError(t('errors.login'))}finally{setBusy(false)}};
+ const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const data=await api<{user:User}>('/auth/login',jsonRequest('POST',{email,password}));onLogin(data.user)}catch{setError(t('errors.login'))}finally{setBusy(false)}};
  return <div className="auth-page"><div className="auth-story"><div className="auth-brand"><Brand/></div><div className="auth-copy"><Pill kind="blue">{t('login.pill')}</Pill><h1>{t('login.title')}</h1><p>{t('login.description')}</p><div className="auth-features"><div><ScanSearch size={20}/> {t('login.feature.analysis')}</div><div><Database size={20}/> {t('login.feature.archive')}</div><div><FileCheck2 size={20}/> {t('login.feature.report')}</div></div></div><div className="auth-footer">{t('login.footer')}</div></div>
  <div className="auth-form-side"><div className="auth-form-wrap"><div className="mobile-brand"><Brand small/></div><div className="login-locale"><LocalePicker/></div><h2>{t('login.welcome')}</h2><p className="muted">{t('login.prompt')}</p><form onSubmit={submit} className="form-stack"><label>{t('login.email')}<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>{t('login.password')}<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<ErrorBox message={error}/>}<Button type="submit" disabled={busy}><LockKeyhole size={17}/>{busy?t('login.busy'):t('login.submit')}<ArrowRight size={17}/></Button></form>
   {development&&<div className="demo-credentials"><div><Info size={18}/><strong>{t('login.demoTitle')}</strong></div><p>{t('login.demoDescription')}</p><button onClick={()=>{setEmail('journaliste@checker.local');setPassword('Journaliste2026!')}}>{t('login.demoJournalist')} <span>journaliste@checker.local</span></button><button onClick={()=>{setEmail('redaction@checker.local');setPassword('Redaction2026!')}}>{t('login.demoEditor')} <span>redaction@checker.local</span></button></div>}</div></div></div>
@@ -84,8 +84,8 @@ function Authenticated({user,onLogout}:{user:User;onLogout:()=>void}){
  return <Shell user={user} onLogout={onLogout}><Routes><Route path="/dashboard" element={<Dashboard/>}/><Route path="/verifier" element={<Verify/>}/><Route path="/actualites" element={<News user={user}/>}/><Route path="/dossiers" element={<Cases/>}/><Route path="/dossiers/:id" element={<CaseWorkspace user={user}/>}/><Route path="/dossiers/:id/rapport" element={<CaseReport/>}/><Route path="/sources" element={<SourcesDirectory user={user}/>}/><Route path="*" element={<Navigate to="/dashboard" replace/>}/></Routes></Shell>
 }
 function Root(){const[user,setUser]=useState<User|null>(null);const[initializing,setInitializing]=useState(true);
- useEffect(()=>{const token=getToken();if(!token){setInitializing(false);return}api<User>('/auth/me').then(setUser).catch(()=>localStorage.removeItem(TOKEN_KEY)).finally(()=>setInitializing(false))},[]);
- const logout=()=>{localStorage.removeItem(TOKEN_KEY);setUser(null)};
+ useEffect(()=>{try{localStorage.removeItem('checker_ko_demo_token')}catch{}api<User>('/auth/me').then(setUser).catch(()=>setUser(null)).finally(()=>setInitializing(false))},[]);
+ const logout=()=>{void api('/auth/logout',{method:'POST'}).catch(()=>{}).finally(()=>setUser(null))};
  if(initializing)return <div className="startup"><Brand/><Loading/></div>;
  return user?<Authenticated user={user} onLogout={logout}/>:<Login onLogin={setUser}/>;
 }

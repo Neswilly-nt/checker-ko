@@ -49,6 +49,15 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(30), default='journalist')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class UserSession(Base):
+    __tablename__ = 'user_sessions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Media(Base):
     __tablename__ = 'media_assets'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -295,6 +304,8 @@ def verify_password(password, encoded):
     except (ValueError, TypeError): return False
 
 SECRET = os.environ.get('CHECKER_SECRET', '')
+if APP_ENV == 'production' and len(SECRET) < 32:
+    raise RuntimeError('CHECKER_SECRET doit être configuré avec au moins 32 caractères en production')
 if not SECRET:
     # local demo only, persisted across restarts for stable login; never print or ship it.
     secret_path = BASE_DIR / '.local_secret'
@@ -305,17 +316,36 @@ if not SECRET:
         try: os.chmod(secret_path,0o600)
         except OSError: pass
 
-def make_token(user):
-    return jwt.encode({'sub':str(user.id), 'exp':now()+timedelta(hours=4)},SECRET, algorithm='HS256')
+def make_token(db,user):
+    session_id=uuid4().hex
+    issued=now()
+    db.query(UserSession).filter(UserSession.expires_at<=issued).delete(synchronize_session=False)
+    expires=issued+timedelta(hours=4)
+    db.add(UserSession(jti=session_id,user_id=user.id,expires_at=expires))
+    db.flush()
+    return jwt.encode({'sub':str(user.id),'sid':session_id,'iat':issued,'exp':expires},SECRET,algorithm='HS256')
 
 def get_user(db, token):
     try:
         claims=jwt.decode(token,SECRET,algorithms=['HS256'])
         user=db.get(User,int(claims['sub']))
         if not user: raise ValueError('user')
+        session=db.query(UserSession).filter_by(jti=claims['sid'],user_id=user.id,revoked_at=None).first()
+        if not session or session.expires_at.replace(tzinfo=timezone.utc)<=now(): raise ValueError('session')
         return user
     except (jwt.PyJWTError, ValueError, TypeError, KeyError):
         raise HTTPException(status_code=401,detail='Session invalide ou expirée')
+
+def revoke_token(db,token):
+    if not token:return
+    try:
+        claims=jwt.decode(token,SECRET,algorithms=['HS256'])
+        session=db.query(UserSession).filter_by(jti=claims.get('sid'),revoked_at=None).first()
+        if session:
+            session.revoked_at=now()
+            db.commit()
+    except (jwt.PyJWTError,TypeError,KeyError):
+        db.rollback()
 
 FORMATS={'JPEG':('image/jpeg','.jpg'), 'PNG':('image/png','.png'), 'WEBP':('image/webp','.webp')}
 MAX_BYTES=10*1024*1024
@@ -510,7 +540,10 @@ def init_db():
                             if field not in existing:
                                 connection.execute(f'ALTER TABLE {table} ADD COLUMN {field} {kind}')
                     connection.commit()
-    Base.metadata.create_all(engine)
+    # SQLite remains the zero-configuration local backend. PostgreSQL schemas are
+    # managed by Alembic so production startup never creates or alters tables.
+    if DB_URL.startswith('sqlite'):
+        Base.metadata.create_all(engine)
     with SessionLocal() as db:
         for email,name,role,password in (DEMO_USERS if APP_ENV == 'development' else []):
             if not db.query(User).filter_by(email=email).first():

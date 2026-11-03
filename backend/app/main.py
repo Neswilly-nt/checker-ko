@@ -7,13 +7,17 @@ import hashlib
 import subprocess
 import tempfile
 import re
+import logging
+import time
+from contextlib import asynccontextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header, Query
+from urllib.parse import urlsplit
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header, Query, Cookie, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -21,25 +25,68 @@ from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from .core import (Analysis, Case, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
-    now, init_db, DEMO_USERS, make_token, get_user, verify_password, store_media, media_path, media_view,
+    now, init_db, DEMO_USERS, make_token, revoke_token, get_user, verify_password, store_media, media_path, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, IMAGES_DIR, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
 
-app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.8.0')
-app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173'],allow_credentials=False,allow_methods=['*'],allow_headers=['*'])
+@asynccontextmanager
+async def lifespan(_app):
+    startup()
+    yield
 
-@app.on_event('startup')
-def startup(): init_db()
+app=FastAPI(title='Checker-ko API',description='Assistance à la vérification journalistique — aucune décision de vérité automatique.',version='0.9.0',lifespan=lifespan)
+SESSION_COOKIE='checker_ko_session'
+CSRF_HEADER='x-checker-csrf'
+logging.basicConfig(level=os.environ.get('LOG_LEVEL','INFO').upper(),format='%(asctime)s %(levelname)s %(name)s %(message)s')
+request_logger=logging.getLogger('checker-ko.requests')
+CORS_ORIGINS=[value.strip().rstrip('/') for value in os.environ.get('CHECKER_CORS_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',') if value.strip()]
+app.add_middleware(CORSMiddleware,allow_origins=CORS_ORIGINS,allow_credentials=True,allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allow_headers=['Content-Type','X-Checker-CSRF'])
+
+@app.middleware('http')
+async def browser_session_protection(request:Request,call_next):
+    started=time.perf_counter()
+    unsafe=request.method not in ('GET','HEAD','OPTIONS','TRACE')
+    login=request.url.path=='/api/auth/login' and request.method=='POST'
+    cookie_session=bool(request.cookies.get(SESSION_COOKIE))
+    csrf_required=login or unsafe and cookie_session
+    origin=request.headers.get('origin')
+    if csrf_required and (request.headers.get(CSRF_HEADER)!='1' or origin and origin.rstrip('/') not in CORS_ORIGINS):
+        request_logger.warning('method=%s path=%s status=403 duration_ms=%.1f',request.method,request.url.path,(time.perf_counter()-started)*1000)
+        return Response('Request origin not allowed',status_code=403)
+    response=await call_next(request)
+    if request.url.path.startswith('/api/'):
+        response.headers.setdefault('Cache-Control','no-store')
+        response.headers.setdefault('X-Content-Type-Options','nosniff')
+        response.headers.setdefault('Referrer-Policy','strict-origin-when-cross-origin')
+        response.headers.setdefault('X-Frame-Options','DENY')
+        if APP_ENV=='production':
+            response.headers.setdefault('Content-Security-Policy',"default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+    if request.url.path.startswith('/api/'):
+        request_logger.info('method=%s path=%s status=%s duration_ms=%.1f',request.method,request.url.path,response.status_code,(time.perf_counter()-started)*1000)
+    return response
+
+def startup():
+    if APP_ENV=='production':
+        if not os.environ.get('DATABASE_URL','').startswith('postgresql+psycopg://'):
+            raise RuntimeError('DATABASE_URL doit pointer vers PostgreSQL en production')
+        if not os.environ.get('CHECKER_DATA_DIR') or not Path(os.environ.get('CHECKER_DATA_DIR','')).expanduser().is_absolute():
+            raise RuntimeError('CHECKER_DATA_DIR must point to an absolute private persistent volume')
+        if not os.environ.get('CHECKER_CORS_ORIGINS') or any(urlsplit(origin).scheme!='https' or not urlsplit(origin).netloc or urlsplit(origin).path not in ('','/') or urlsplit(origin).query or urlsplit(origin).fragment or '*' in origin for origin in CORS_ORIGINS):
+            raise RuntimeError('CHECKER_CORS_ORIGINS must contain only allowed HTTPS origins')
+    init_db()
 
 def db_session():
     with SessionLocal() as db: yield db
 
-def current_user(authorization:str|None=Header(default=None),db:Session=Depends(db_session)):
-    if not authorization or not authorization.startswith('Bearer '):
+def current_user(session_token:str|None=Cookie(default=None,alias=SESSION_COOKIE),authorization:str|None=Header(default=None),db:Session=Depends(db_session)):
+    token=session_token
+    if not token and APP_ENV!='production' and authorization and authorization.startswith('Bearer '):
+        token=authorization.removeprefix('Bearer ')
+    if not token:
         raise HTTPException(401,'Authentification requise')
-    return get_user(db,authorization.removeprefix('Bearer '))
+    return get_user(db,token)
 
 def get_case(case_id:int,db:Session,user:User):
     item=db.get(Case,case_id)
@@ -154,12 +201,25 @@ def checked_region(value):
     except ValueError as exc:raise HTTPException(422,str(exc)) from exc
 
 @app.post('/api/auth/login')
-def login(data:LoginIn,db:Session=Depends(db_session)):
+def login(data:LoginIn,response:Response,db:Session=Depends(db_session)):
     user=db.query(User).filter_by(email=data.email.lower().strip()).first()
     if APP_ENV == 'production' and user and user.email in {entry[0] for entry in DEMO_USERS}:
         raise HTTPException(401,'Identifiants incorrects')
     if not user or not verify_password(data.password,user.password_hash): raise HTTPException(401,'Identifiants incorrects')
-    return {'access_token':make_token(user),'token_type':'bearer','user':user_view(user)}
+    token=make_token(db,user)
+    db.commit()
+    secure=APP_ENV=='production' or os.environ.get('CHECKER_COOKIE_SECURE','').lower()=='true'
+    response.set_cookie(SESSION_COOKIE,token,max_age=4*60*60,httponly=True,secure=secure,samesite='lax',path='/api')
+    result={'user':user_view(user)}
+    if APP_ENV!='production': result.update({'access_token':token,'token_type':'bearer'})
+    return result
+
+@app.post('/api/auth/logout')
+def logout(response:Response,session_token:str|None=Cookie(default=None,alias=SESSION_COOKIE),db:Session=Depends(db_session)):
+    revoke_token(db,session_token)
+    secure=APP_ENV=='production' or os.environ.get('CHECKER_COOKIE_SECURE','').lower()=='true'
+    response.delete_cookie(SESSION_COOKIE,path='/api',httponly=True,secure=secure,samesite='lax')
+    return {'ok':True}
 
 @app.get('/api/auth/me')
 def me(user:User=Depends(current_user)): return user_view(user)

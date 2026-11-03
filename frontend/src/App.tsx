@@ -1,6 +1,6 @@
 ﻿import {useEffect,useState,useCallback,useRef, type FormEvent, type ReactNode} from 'react';
 import {BrowserRouter,NavLink,Navigate,Route,Routes,useNavigate,useParams,useLocation,Link} from 'react-router-dom';
-import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronRight,Clock3,ExternalLink,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Image as ImageIcon,Info,LayoutDashboard,LockKeyhole,LogOut,Menu,Plus,Printer,RefreshCcw,Search,ShieldCheck,ShieldQuestion,Trash2,UploadCloud,X,AlertCircle,Eye,ScanSearch,Database,Send} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronDown,ChevronRight,Clock3,Copy,ExternalLink,Eye,EyeOff,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Info,LayoutDashboard,LockKeyhole,LogOut,Mail,Menu,Moon,Plus,Printer,RefreshCcw,Search,ShieldCheck,ShieldQuestion,Sun,Trash2,UploadCloud,X,AlertCircle,ScanSearch,Database,Send} from 'lucide-react';
 import {api,ApiError,getToken,jsonRequest,TOKEN_KEY} from './api';
 import type {User,Case,CaseItem,Match,Evidence,Verdict,NewsItem} from './types';
 import SourcesDirectory from './SourcesDirectory';
@@ -15,6 +15,7 @@ const demo='ARCHIVE FICTIVE — DONNÉES DE TEST';
 const statusLabel:Record<string,string>={en_cours:'En cours',concluded:'Conclusion saisie',review_requested:'Relecture demandée',reviewed:'Relu par la rédaction',changes_requested:'Complément demandé'};
 
 function Brand({small=false}:{small?:boolean}){return <div className="brand"><img src="/logo.svg" width={small?35:43} height={small?35:43} alt=""/><div><strong>Checker-ko</strong>{!small&&<span>Vérifiez l'information. Appuyez-vous sur des preuves.</span>}</div></div>}
+function LoginBrand(){return <div className="brand auth-login-brand"><img src="/logo.svg" width={39} height={39} alt=""/><div><strong>Checker-<span>ko</span></strong></div></div>}
 function Pill({children,kind='neutral'}:{children:ReactNode;kind?:'neutral'|'warning'|'good'|'blue'}){return <span className={`pill ${kind}`}>{children}</span>}
 function Banner({children}:{children:ReactNode}){return <div className="notice"><Info size={17}/><span>{children}</span></div>}
 function Empty({icon,heading,description,action}:{icon:ReactNode;heading:string;description:string;action?:ReactNode}){return <div className="empty"><div className="empty-icon">{icon}</div><h3>{heading}</h3><p>{description}</p>{action}</div>}
@@ -44,12 +45,51 @@ function Shell({user,onLogout,children}:{user:User;onLogout:()=>void;children:Re
 }
 
 function Login({onLogin}:{onLogin:(user:User)=>void}){
- const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[development,setDevelopment]=useState(false);
+ const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[error,setError]=useState('');const[notice,setNotice]=useState('');const[busy,setBusy]=useState(false);const[development,setDevelopment]=useState(false);const[showPassword,setShowPassword]=useState(false);const[darkMode,setDarkMode]=useState(false);
  useEffect(()=>{api<{mode:string}>('/health').then(data=>setDevelopment(data.mode==='development')).catch(()=>{})},[]);
  const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const data=await api<{access_token:string;user:User}>('/auth/login',jsonRequest('POST',{email,password}));localStorage.setItem(TOKEN_KEY,data.access_token);onLogin(data.user)}catch(err){setError((err as Error).message)}finally{setBusy(false)}};
- return <div className="auth-page"><div className="auth-story"><div className="auth-brand"><Brand/></div><div className="auth-copy"><Pill kind="blue">INTELLIGENCE ÉDITORIALE RESPONSABLE</Pill><h1>Chaque image mérite<br/><em>une vérification.</em></h1><p>Inspectez l’origine technique, recoupez vos archives et documentez chaque preuve. Votre jugement fait la différence.</p><div className="auth-features"><div><ScanSearch size={20}/> Analyse technique transparente</div><div><Database size={20}/> Comparaison avec les archives internes</div><div><FileCheck2 size={20}/> Fiche de vérification traçable</div></div></div><div className="auth-footer">Conçu pour les journalistes et petites rédactions à Madagascar.</div></div>
- <div className="auth-form-side"><div className="auth-form-wrap"><div className="mobile-brand"><Brand small/></div><h2>Bienvenue sur Checker-ko</h2><p className="muted">Connectez-vous à votre espace de vérification.</p><form onSubmit={submit} className="form-stack"><label>Adresse e-mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<ErrorBox message={error}/>}<Button type="submit" disabled={busy}><LockKeyhole size={17}/>{busy?'Connexion...':'Se connecter'}<ArrowRight size={17}/></Button></form>
-  {development&&<div className="demo-credentials"><div><Info size={18}/><strong>Comptes de développement</strong></div><p>Ces comptes servent uniquement aux essais locaux. Les archives fictives restent signalées dans les dossiers.</p><button onClick={()=>{setEmail('journaliste@checker.local');setPassword('Journaliste2026!')}}>Journaliste <span>journaliste@checker.local</span></button><button onClick={()=>{setEmail('redaction@checker.local');setPassword('Redaction2026!')}}>Rédacteur en chef <span>redaction@checker.local</span></button></div>}</div></div></div>
+ const copyEmail=async(value:string)=>{try{await navigator.clipboard.writeText(value);setNotice('Adresse e-mail copiée.')}catch{setNotice('Copie indisponible dans ce navigateur.')}};
+ const chooseAccount=(accountEmail:string,accountPassword:string)=>{setEmail(accountEmail);setPassword(accountPassword);setNotice('Identifiants de démonstration renseignés.');setError('')};
+ return <div className={`auth-page ${darkMode?'auth-dark':''}`}>
+  <section className="auth-story" aria-label="À propos de Checker-ko">
+   <div className="auth-brand"><LoginBrand/></div>
+   <div className="auth-copy">
+    <Pill kind="blue"><span className="auth-live-dot"/> INTELLIGENCE ÉDITORIALE RESPONSABLE</Pill>
+    <h1>Chaque image<br/>mérite<br/><em>une vérification.</em></h1>
+    <p>Inspectez l’origine technique, recoupez vos archives et documentez chaque preuve. Votre jugement fait la différence.</p>
+    <div className="auth-features">
+     <div><span className="auth-feature-icon"><ScanSearch size={21}/></span><span><strong>Analyse technique transparente</strong><small>Métadonnées, origine, modifications</small></span></div>
+     <div><span className="auth-feature-icon"><Database size={21}/></span><span><strong>Comparaison avec les archives internes</strong><small>Sources fiables et vérifiées</small></span></div>
+     <div><span className="auth-feature-icon"><FileCheck2 size={21}/></span><span><strong>Fiche de vérification traçable</strong><small>Documentez et partagez vos résultats</small></span></div>
+    </div>
+   </div>
+   <div className="auth-footer">Conçu pour les journalistes et petites rédactions à Madagascar.</div>
+  </section>
+  <section className="auth-form-side">
+   <div className="auth-toolbar">
+    <button className="auth-theme-toggle" type="button" onClick={()=>setDarkMode(value=>!value)} aria-label={darkMode?'Activer le thème clair':'Activer le thème sombre'} title={darkMode?'Activer le thème clair':'Activer le thème sombre'}>{darkMode?<Moon size={18}/>:<Sun size={18}/>}</button>
+    <span className="auth-language" aria-label="Langue : français">FR <ChevronDown size={15}/></span>
+   </div>
+   <div className="auth-card">
+    <div className="mobile-brand"><LoginBrand/></div>
+    <div className="auth-card-brand"><LoginBrand/></div>
+    <h2>Bienvenue sur<br/><span>Checker-ko</span></h2>
+    <p className="auth-intro">Connectez-vous à votre espace de vérification.</p>
+    <form onSubmit={submit} className="form-stack auth-login-form">
+     <label>Adresse e-mail<span className="auth-input-wrap"><Mail size={17}/><input type="email" autoComplete="username" required value={email} placeholder="journaliste@checker.local" onChange={e=>{setEmail(e.target.value);setNotice('')}}/></span></label>
+     <label>Mot de passe<span className="auth-input-wrap"><LockKeyhole size={17}/><input type={showPassword?'text':'password'} autoComplete="current-password" required value={password} placeholder="Votre mot de passe" onChange={e=>{setPassword(e.target.value);setNotice('')}}/><button className="auth-password-toggle" type="button" aria-label={showPassword?'Masquer le mot de passe':'Afficher le mot de passe'} onClick={()=>setShowPassword(value=>!value)}>{showPassword?<EyeOff size={17}/>:<Eye size={17}/>}</button></span></label>
+     <button className="auth-forgot" type="button" onClick={()=>{setNotice('La réinitialisation du mot de passe n’est pas disponible ici. Contactez votre responsable de rédaction.');setError('')}}>Mot de passe oublié ?</button>
+     {notice&&<div className="auth-notice" role="status">{notice}</div>}
+     {error&&<ErrorBox message={error}/>}
+     <Button type="submit" disabled={busy}><LockKeyhole size={17}/>{busy?'Connexion...':'Se connecter'}<ArrowRight size={17}/></Button>
+    </form>
+    {development&&<div className="demo-credentials"><div className="demo-heading"><Info size={19}/><strong>Comptes de développement</strong></div><p>Ces comptes servent uniquement aux essais locaux. Les archives fictives restent signalées dans les dossiers.</p>
+     <div className="demo-account"><button type="button" className="demo-account-select" onClick={()=>chooseAccount('journaliste@checker.local','Journaliste2026!')}><strong>Journaliste</strong><span>journaliste@checker.local</span></button><button className="demo-copy" type="button" onClick={()=>copyEmail('journaliste@checker.local')} aria-label="Copier l’adresse du journaliste"><Copy size={15}/></button></div>
+     <div className="demo-account"><button type="button" className="demo-account-select" onClick={()=>chooseAccount('redaction@checker.local','Redaction2026!')}><strong>Rédacteur en chef</strong><span>redaction@checker.local</span></button><button className="demo-copy" type="button" onClick={()=>copyEmail('redaction@checker.local')} aria-label="Copier l’adresse du rédacteur en chef"><Copy size={15}/></button></div>
+    </div>}
+   </div>
+  </section>
+ </div>
 }
 
 function Dashboard(){const[data,setData]=useState<{items:CaseItem[];total:number;concluded:number}|null>(null);const[error,setError]=useState('');

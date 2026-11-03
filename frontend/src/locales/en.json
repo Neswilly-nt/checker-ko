@@ -554,5 +554,6 @@
   "workspace.oneEvidence": "1 item",
   "workspace.manyEvidence": "{{count}} items",
   "workspace.reviewedBy": "Reviewed by {{name}}",
-  "workspace.notFinalized": "This case cannot be finalized yet."
+  "workspace.notFinalized": "This case cannot be finalized yet.",
+  "login.success": "Signed in successfully"
 }

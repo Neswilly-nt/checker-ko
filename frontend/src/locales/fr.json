@@ -554,5 +554,6 @@
   "workspace.oneEvidence": "1 élément",
   "workspace.manyEvidence": "{{count}} éléments",
   "workspace.reviewedBy": "Relu par {{name}}",
-  "workspace.notFinalized": "Cette fiche ne peut pas encore être finalisée."
+  "workspace.notFinalized": "Cette fiche ne peut pas encore être finalisée.",
+  "login.success": "Connexion réussie"
 }

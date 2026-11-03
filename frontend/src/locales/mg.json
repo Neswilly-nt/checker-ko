@@ -554,5 +554,6 @@
   "workspace.oneEvidence": "Singa 1",
   "workspace.manyEvidence": "Singa {{count}}",
   "workspace.reviewedBy": "Nojeren’i {{name}}",
-  "workspace.notFinalized": "Tsy mbola azo faranana ity antontan-taratasy ity."
+  "workspace.notFinalized": "Tsy mbola azo faranana ity antontan-taratasy ity.",
+  "login.success": "Voaray soa aman-tsara ny fidirana"
 }

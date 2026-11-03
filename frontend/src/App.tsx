@@ -1,6 +1,6 @@
 ﻿import {useEffect,useState,useCallback,useRef, type FormEvent, type ReactNode} from 'react';
 import {BrowserRouter,NavLink,Navigate,Route,Routes,useNavigate,useParams,useLocation,Link} from 'react-router-dom';
-import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronRight,Clock3,ExternalLink,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Image as ImageIcon,Info,LayoutDashboard,LoaderCircle,LockKeyhole,LogOut,Menu,Plus,Printer,RefreshCcw,Search,ShieldCheck,ShieldQuestion,Trash2,UploadCloud,X,AlertCircle,Eye,EyeOff,Sun,Moon,ScanSearch,Database,Send,Video} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,BookOpen,Check,CheckCircle2,ChevronRight,Clock3,ExternalLink,FileCheck2,FileImage,FileSearch,FileText,FolderOpen,Image as ImageIcon,Info,LayoutDashboard,Layers3,Link2,LoaderCircle,LockKeyhole,LogOut,MapPin,Menu,Plus,Printer,RefreshCcw,Save,Search,ShieldCheck,ShieldQuestion,Trash2,UploadCloud,X,AlertCircle,Eye,EyeOff,Sun,Moon,ScanSearch,Database,Send,Video} from 'lucide-react';
 import {api,apiUrl,ApiError,jsonRequest} from './api';
 import type {User,Case,CaseItem,Match,Evidence,Verdict,NewsItem} from './types';
 import SourcesDirectory from './SourcesDirectory';
@@ -100,18 +100,37 @@ function Verify(){
  const submit=async(e:FormEvent)=>{e.preventDefault();const values=forms[kind];setBusy(true);setError('');try{let result:{id:number};if(kind==='texte'){result=await api('/cases',jsonRequest('POST',{claim_text:values.claim,original_source_url:values.url||null,sector:values.sector,region:values.region||null}))}else{if(!values.file){setError(t('verify.chooseFile'));return;}const form=new FormData();form.append('file',values.file);form.append('caption',values.claim);form.append('source_url',values.url);form.append('sector',values.sector);form.append('region',values.region);result=await api(kind==='photo'?'/media/upload':'/video/upload',{method:'POST',body:form})}nav(`/dossiers/${result.id}`)}catch(err){setError(errorMessage(err))}finally{setBusy(false)}};
  const options:[Kind,string,ReactNode][]=[['photo','verify.photo',<ImageIcon size={20}/>],['video','verify.video',<Video size={20}/>],['texte','verify.text',<FileText size={20}/>]];
  const sectorNames:Record<string,string>={autre:'other','météo/catastrophes':'weather','éducation':'education','santé':'health','économie':'economy',environnement:'environment',administration:'administration'};
- return <><div className="page-heading verify-page-heading"><div><h1>{t('verify.title')}</h1><p>{t('verify.intro')}</p></div></div>
-<ol className="workflow-stepper" aria-label={t('verify.steps')}>{(['add','examine','crosscheck','conclude'] as const).map(stage=><li className="workflow-step" key={stage}>{t(`verify.stage.${stage}`)}</li>)}</ol>
-<form className="panel verify-panel" onSubmit={submit}>
- <div className="verify-options" role="group" aria-label={t('verify.kind')}>{options.map(([type,label,icon])=><button key={type} type="button" className={`verify-option-heading ${kind===type?'selected':''}`} aria-pressed={kind===type} onClick={()=>{setKind(type);setError('')}}>{icon}<span>{t(label)}</span></button>)}</div>
- <div className="form-stack verify-option-fields" key={kind}>
- {kind!=='texte'&&<label>{t('verify.file')}<input type="file" accept={kind==='photo'?'image/jpeg,image/png,image/webp':'video/mp4'} onChange={e=>update(kind,'file',e.target.files?.[0]||null)}/><small>{kind==='photo'?t('verify.photoLimit'):t('verify.videoLimit')}{forms[kind].file?` ? ${forms[kind].file.name}`:''}</small></label>}
- {kind==='video'&&videoAvailable===false&&<Banner>{t('verify.ffmpeg')}</Banner>}
- <label>{t('verify.claim')}<textarea required={kind==='texte'} minLength={kind==='texte'?3:undefined} rows={3} maxLength={8000} value={forms[kind].claim} onChange={e=>update(kind,'claim',e.target.value)}/></label>
- <label>{t('verify.sourceUrl')}<input type="url" value={forms[kind].url} onChange={e=>update(kind,'url',e.target.value)}/></label>
- <div className="verify-field-row"><label>{t('verify.sector')}<select value={forms[kind].sector} onChange={e=>update(kind,'sector',e.target.value)}>{sectors.map(sector=><option key={sector} value={sector}>{t(`sector.${sectorNames[sector]}`)}</option>)}</select></label><label>{t('verify.region')}<select value={forms[kind].region} onChange={e=>update(kind,'region',e.target.value)}><option value="">{t('verify.regionUnknown')}</option>{catalog&&<><option value={catalog.national}>{catalog.national}</option>{catalog.items.map(value=><option key={value}>{value}</option>)}</>}</select></label></div>
- </div>{error&&<ErrorBox message={error}/>}<div className="verify-submit"><Button type="submit" disabled={busy||(kind!=='texte'&&!forms[kind].file)||(kind==='video'&&videoAvailable===false)}>{busy?t('verify.busy'):t('verify.submit')}<ArrowRight size={18}/></Button></div>
-</form></>;
+ const stages=(['add','examine','crosscheck','conclude'] as const);
+ const values=forms[kind];
+ const fileId=`verify-file-${kind}`;
+ return <div className="verify-editorial-page">
+   <img className="verify-press-art verify-alaune" src="/A-la-Une.jfif" alt="" aria-hidden="true"/>
+   <img className="verify-press-art verify-voix" src="/Voix de la Presse.jpg" alt="" aria-hidden="true"/>
+   <div className="verify-editorial-content">
+    <div className="page-heading verify-page-heading"><div><span className="verify-kicker">{t('verify.kicker')}</span><h1>{t('verify.title')}</h1><p>{t('verify.intro')}</p></div></div>
+    <ol className="verify-progress" aria-label={t('verify.steps')}>{stages.map((stage,index)=><li className={`verify-progress-item ${index===0?'is-active':''}`} key={stage}><span className="verify-progress-number">{index===0?<Check size={16}/>:index+1}</span><span><strong>{t(`verify.stage.${stage}`)}</strong><small>{t(`verify.stageDescription.${stage}`)}</small></span>{index<stages.length-1&&<ChevronRight className="verify-progress-arrow" size={20}/>}</li>)}</ol>
+    <div className="verify-editorial-layout">
+     <form className="verify-editorial-form" onSubmit={submit} aria-busy={busy}>
+      <div className="verify-choice-grid" role="group" aria-label={t('verify.kind')}>{options.map(([type,label,icon])=><button key={type} type="button" className={`verify-choice ${kind===type?'is-selected':''}`} aria-pressed={kind===type} onClick={()=>{setKind(type);setError('')}}><span className="verify-choice-icon">{icon}</span><span>{t(label)}</span>{kind===type&&<CheckCircle2 size={18}/>}</button>)}</div>
+      <div className="verify-form-body" key={kind}>
+       {kind!=='texte'&&<div className="verify-field"><span className="verify-label">{t('verify.file')} <b aria-hidden="true">*</b></span><label className={`verify-upload-zone ${values.file?'has-file':''}`} htmlFor={fileId}><input id={fileId} className="sr-only" type="file" accept={kind==='photo'?'image/jpeg,image/png,image/webp':'video/mp4'} onChange={e=>update(kind,'file',e.target.files?.[0]||null)}/><span className="verify-upload-icon"><UploadCloud size={26}/></span><span className="verify-upload-copy"><strong>{values.file?values.file.name:t('verify.chooseFileAction')}</strong><span>{values.file?t('verify.fileSelected'):t('verify.dropFile')}</span><small>{kind==='photo'?t('verify.photoLimit'):t('verify.videoLimit')}</small></span><ImageIcon className="verify-upload-image" size={42}/></label></div>}
+       {kind==='texte'&&<div className="verify-text-intro"><FileText size={20}/><span>{t('verify.textHelp')}</span></div>}
+       {kind==='video'&&videoAvailable===false&&<Banner>{t('verify.ffmpeg')}</Banner>}
+       <label className="verify-field"><span className="verify-label">{t('verify.claim')} {kind==='texte'&&<b aria-hidden="true">*</b>}</span><textarea required={kind==='texte'} minLength={kind==='texte'?3:undefined} rows={3} maxLength={8000} placeholder={t('verify.claimPlaceholder')} value={values.claim} onChange={e=>update(kind,'claim',e.target.value)}/></label>
+       <div className="verify-two-fields"><label className="verify-field"><span className="verify-label">{t('verify.sourceUrl')}</span><span className="verify-input-icon"><Link2 size={18}/><input type="url" placeholder="https://…" value={values.url} onChange={e=>update(kind,'url',e.target.value)}/></span></label><label className="verify-field"><span className="verify-label">{t('verify.sector')} <b aria-hidden="true">*</b></span><span className="verify-input-icon"><Layers3 size={18}/><select required value={values.sector} onChange={e=>update(kind,'sector',e.target.value)}>{sectors.map(sector=><option key={sector} value={sector}>{t(`sector.${sectorNames[sector]}`)}</option>)}</select></span></label></div>
+       <label className="verify-field verify-region-field"><span className="verify-label">{t('verify.region')}</span><span className="verify-input-icon"><MapPin size={18}/><select value={values.region} onChange={e=>update(kind,'region',e.target.value)}><option value="">{t('verify.regionUnknown')}</option>{catalog&&<><option value={catalog.national}>{catalog.national}</option>{catalog.items.map(value=><option key={value}>{value}</option>)}</>}</select></span></label>
+      </div>
+      {error&&<ErrorBox message={error}/>}
+      <div className="verify-actions"><button type="button" className="verify-draft" disabled title={t('verify.draftUnavailable')}><Save size={18}/><span>{t('verify.draft')}</span><small>{t('verify.soon')}</small></button><Button type="submit" disabled={busy||(kind!=='texte'&&!values.file)||(kind==='video'&&videoAvailable===false)}>{busy?<LoaderCircle className="verify-button-spinner" size={18}/>:null}{busy?t('verify.busy'):t('verify.submit')}<ArrowRight size={18}/></Button></div>
+     </form>
+     <aside className="verify-aside">
+      <section className="verify-aside-card"><h2><Info size={21}/>{t('verify.tipsTitle')}</h2><ul><li>{t('verify.tipClaim')}</li><li>{t('verify.tipSource')}</li><li>{t('verify.tipContext')}</li><li>{t('verify.tipFiles')}</li></ul></section>
+      <section className="verify-aside-card verify-limits"><h2><Layers3 size={21}/>{t('verify.limitsTitle')}</h2><p><ImageIcon size={17}/>{t('verify.limitPhoto')}</p><p><Video size={17}/>{t('verify.limitVideo')}</p><p><FileText size={17}/>{t('verify.limitText')}</p></section>
+      <section className="verify-aside-card verify-reminder"><h2><ShieldQuestion size={21}/>{t('verify.reminderTitle')}</h2><p>{t('verify.reminder')}</p></section>
+     </aside>
+    </div>
+   </div>
+  </div>;
 }
 
 function Cases(){const {t,locale,errorMessage}=useI18n();const [items,setItems]=useState<CaseItem[]>([]);const[q,setQ]=useState('');const[error,setError]=useState('');const[loading,setLoading]=useState(true);

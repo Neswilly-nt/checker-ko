@@ -1,37 +1,36 @@
-# Architecture Checker-ko (v0.4, phase 1)
+# Architecture Checker-ko
 
-Les dossiers `verification_cases` acceptent désormais un `asset_id` nul pour les affirmations sans image. Les dossiers vidéo ont une ligne `case_videos` et trois images-clés stockées dans `media_assets`. La première image-clé est l'image principale du dossier ; les trois peuvent être comparées aux archives internes. Le MP4 original reste dans `private_data/videos`, hors du frontend. Les aperçus JPEG passent par une route authentifiée et ne contiennent pas d'EXIF/GPS.
-
-À l'ouverture d'une ancienne base SQLite, `init_db` sauvegarde la base puis reconstruit `verification_cases` en conservant les identifiants et leurs liens. `APP_ENV=production` empêche l'initialisation et la connexion des comptes d'exemple. Les données fictives existantes restent identifiées.
-
-Le frontend utilise cinq entrées de navigation. Actualités est un état vide jusqu'à la vérification de flux réels. La recherche inversée externe demeure manuelle : les observations, pas les résultats automatiques des services, sont enregistrées comme preuves.
+Checker-ko combine un frontend React/TypeScript et une API FastAPI. Le navigateur ne reçoit que des données JSON et des aperçus JPEG; les originaux restent dans un répertoire de données privé.
 
 ```text
-Navigateur React/TypeScript + Vite (127.0.0.1:5173)
+Navigateur React + Vite / frontend statique
           |
-          | /api/* avec Bearer JWT (proxy Vite en développement)
+          | même origine HTTPS en production (/api)
           v
-FastAPI (127.0.0.1:8000)
-  |            |                    |
-  |            |                    +-- subprocess c2patool si installé
-  |            +-- stockage privé : originals UUID, génération d'aperçus JPEG
-  +-- SQLAlchemy -> SQLite (base locale)
+Proxy TLS -> FastAPI -> SQLAlchemy -> PostgreSQL (production)
+                         |              SQLite (développement local)
+                         +-> volume privé images/vidéos
 ```
 
-## Principes
+## Identité et permissions
 
-- **Backend autoritatif** : utilisateurs, propriétaires, preuves, décisions, états, analyses et audit viennent du serveur. Interdit d'attribuer le verdict au modèle.
-- Authentification : `scrypt` salé, JWT HS256 de 4 heures, secret local généré et non expédié. Démonstration uniquement : stockage du token dans `localStorage` côté frontend.
-- Autorisation : seul le propriétaire peut modifier le dossier, les preuves et la conclusion ; seul un rédacteur autre que l'auteur peut relire un dossier explicitement soumis. Le média privé ne peut être prévisualisé que par son propriétaire ou un relecteur habilité. Les archives fictives sont partagées aux utilisateurs authentifiés.
-- Import : taille ≤ 10 MiB, contenu décodé et vérifié via Pillow, pixels limités, nom de fichier nettoyé, octets originaux stockés en dehors de Vite. Les miniatures sont générées à la volée sans données GPS EXIF.
-- REWIND : pHash 64 bits calculé sur le fichier ; distance Hamming ≤ `PHASH_THRESHOLD` (12). Degrés de similarité visuelle = `100 * (1-distance/64)`, **sans portée probabiliste**.
-- C2PA : appelle `c2patool fichier` avec `subprocess.run([binary,path], shell=False, timeout=10)` ; analyse le JSON ; un manifeste valide ne suffit pas pour établir l'authenticité d'un fait ou d'une légende.
-- P0 de bout en bout : connexion → import → analyse → REWIND → preuve → verdict humain → rapport privé → impression navigateur.
+- Les mots de passe sont hachés avec scrypt salé. Les JWT HS256 durent quatre heures et portent un identifiant de session stocké en base.
+- Le navigateur utilise un cookie `HttpOnly`, `SameSite=Lax` et `Secure` en production. Le logout révoque l'identifiant côté serveur. Le Bearer reste disponible uniquement en développement et tests.
+- Les écritures via cookie exigent `X-Checker-CSRF: 1`; CORS n'autorise que les origines configurées avec credentials.
+- Un journaliste accède à ses dossiers. Un éditeur peut accéder à un dossier appartenant à un autre journaliste seulement après demande de relecture; il ne peut pas approuver son propre dossier.
+- Rapports, images et aperçus passent par des routes authentifiées. Les originaux vidéo et images sont hors du répertoire servi par le frontend.
 
-## Tables
+## Persistance et fichiers
 
-`users`, `media_assets`, `media_analyses`, `verification_cases`, `evidence`, `verdicts`, `source_directory`, `audit_events`. SQLite applique les clés étrangères via `PRAGMA foreign_keys=ON`.
+- SQLite reste le choix sans configuration locale. Ses adaptations de schéma historiques sauvegardent la base avant toute reconstruction et conservent les identifiants et relations.
+- PostgreSQL utilise psycopg et le schéma est géré par Alembic. Le démarrage de l'application ne crée pas automatiquement les tables PostgreSQL.
+- `CHECKER_DATA_DIR` contient base SQLite locale et/ou fichiers privés selon l'environnement. Pour PostgreSQL, ce répertoire doit être un volume persistant non public.
+- Les images acceptées sont JPEG, PNG et WebP (10 Mio, 25 millions de pixels maximum). Les MP4 sont limités en taille, durée et dimensions; ffprobe/ffmpeg sont appelés sans shell et avec délais.
+- Les aperçus sont générés sans EXIF/GPS, authentifiés et `no-store`. C2PA et pHash produisent des indices, jamais une décision de vérité.
 
-## Déploiement ultérieur
+## Actualités, sécurité et exploitation
 
-Prévoir : Alembic, `psycopg` pour PostgreSQL, gestion des secrets externalisée, sessions HTTP-only, HTTPS, CSRF, rate limiting, validation approfondie des médias, protection antivirus, quotas, supervision, sauvegardes chiffrées, journalisation non sensible et stratégie de rétention. Les scripts Windows installent et lancent uniquement sur la machine locale.
+- La veille v0.5 importe des flux RSS contrôlés par le serveur. Elle limite les hôtes/adresses, ne suit pas les redirections, borne le flux à 1,5 Mo, refuse les entités XML et n'accepte que des liens d'articles HTTP(S).
+- Les textes sont affichés par React, sans `dangerouslySetInnerHTML`. Les en-têtes API incluent `no-store`, `nosniff`, `Referrer-Policy`, `X-Frame-Options` et une CSP en production; le proxy doit également appliquer les protections aux pages statiques et HSTS.
+- Les journaux applicatifs vont vers stdout/stderr et ne contiennent ni corps, cookie, JWT, mot de passe ni query string. Les événements d'audit éditorial restent séparés en base.
+- Le déploiement préproduction et les limites restantes sont décrits dans [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) et [DEPLOYMENT.md](DEPLOYMENT.md). Checker-ko n'est pas déclaré prêt pour la production à ce stade.

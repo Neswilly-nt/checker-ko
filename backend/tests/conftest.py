@@ -17,14 +17,16 @@ def client():
 
 @pytest.fixture
 def journalist(client):
-    resp=client.post('/api/auth/login',json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
+    resp=client.post('/api/auth/login',json={'email':'journaliste@checker.local','password':'Journaliste2026!'},headers={'X-Checker-CSRF':'1'})
     assert resp.status_code==200
+    client.cookies.clear()
     return {'Authorization':'Bearer '+resp.json()['access_token']}
 
 @pytest.fixture
 def editor(client):
-    resp=client.post('/api/auth/login',json={'email':'redaction@checker.local','password':'Redaction2026!'})
+    resp=client.post('/api/auth/login',json={'email':'redaction@checker.local','password':'Redaction2026!'},headers={'X-Checker-CSRF':'1'})
     assert resp.status_code==200
+    client.cookies.clear()
     return {'Authorization':'Bearer '+resp.json()['access_token']}
 
 @pytest.fixture

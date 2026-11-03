@@ -1,11 +1,12 @@
 # API REST — Checker-ko
 
-URL locale : `http://127.0.0.1:8000`. Swagger interactif : `/docs`. Authentification des routes privées : `Authorization: Bearer <jeton>`.
+URL locale : `http://127.0.0.1:8000`. Swagger interactif : `/docs`. En production, la session est un cookie `HttpOnly; Secure; SameSite=Lax`, révocable au logout; les requêtes d'écriture doivent inclure `X-Checker-CSRF: 1`. Le Bearer documenté dans les exemples de développement reste désactivé en production.
 
 | Méthode | Route | Description |
 |---|---|---|
 | GET | `/api/health` | État de l'API, FFmpeg/ffprobe et c2patool |
-| POST | `/api/auth/login` | Connexion locale et JWT |
+| POST | `/api/auth/login` | Ouvre une session cookie privée (le jeton JSON n'est renvoyé qu'en développement) |
+| POST | `/api/auth/logout` | Révoque la session et supprime le cookie |
 | GET | `/api/auth/me` | Utilisateur courant |
 | GET | `/api/cases?q=` | Dossiers accessibles, `content_type` (`photo`, `video`, `texte`) et compteurs `total` / `concluded` calculés sur tous les dossiers accessibles |
 | POST | `/api/cases` | Nouveau dossier texte ou lien, avec `region` facultative |
@@ -30,6 +31,8 @@ URL locale : `http://127.0.0.1:8000`. Swagger interactif : `/docs`. Authentifica
 | POST/PUT | `/api/sources`, `/api/sources/{id}` | Administration des fiches, rôle `editor` |
 
 ## Exemples de payloads
+
+La réponse de production ne contient pas de JWT lisible par le navigateur. Le cookie est envoyé automatiquement sur la même origine; le client ajoute `X-Checker-CSRF: 1` aux requêtes d'écriture. Les exemples de jeton ci-dessous ne s'appliquent qu'au mode local.
 
 `POST /api/auth/login` :
 

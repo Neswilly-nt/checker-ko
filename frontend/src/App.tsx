@@ -80,12 +80,30 @@ function Login({onLogin}:{onLogin:(user:User)=>void}){
  </div></div></div>
 }
 
-function Dashboard(){const {t,locale,errorMessage}=useI18n();const[data,setData]=useState<{items:CaseItem[];total:number;concluded:number}|null>(null);const[error,setError]=useState('');
- useEffect(()=>{api<{items:CaseItem[];total:number;concluded:number}>('/cases').then(setData).catch(e=>setError(errorMessage(e)))},[errorMessage]);
- return <div className="dashboard"><div className="dashboard-heading page-heading"><div><h1>{t('home.title')}</h1><p>{t('home.description')}</p></div><Link className="btn primary" to="/verifier"><Plus size={21}/> {t('home.new')}</Link></div>
- {error&&<ErrorBox message={error}/>}{!data? !error&&<Loading/>:<><div className="dashboard-stats" aria-label={t('home.stats')}><div className="dashboard-stat"><span className="dashboard-stat-icon blue"><FolderOpen size={18}/></span><span>{t('home.folders')}</span><strong>{data.total}</strong></div><div className="dashboard-stat"><span className="dashboard-stat-icon green"><CheckCircle2 size={18}/></span><span>{t('home.conclusions')}</span><strong>{data.concluded}</strong></div><div className="dashboard-stat"><span className="dashboard-stat-icon amber"><Clock3 size={18}/></span><span>{t('home.followUp')}</span><strong>{data.total-data.concluded}</strong></div></div>
- <section className="panel dashboard-recent"><div className="dashboard-recent-head"><h2>{t('home.recent')}</h2><Link to="/dossiers" className="text-link">{t('home.all')} <ArrowRight size={15}/></Link></div>{!data.items.length?<div className="dashboard-empty">{t('home.empty')}</div>:<div className="dashboard-list">{data.items.slice(0,5).map(c=><Link className="dashboard-row" to={`/dossiers/${c.id}`} key={c.id} aria-label={t('home.openCase',{id:String(c.id).padStart(3,'0'),claim:c.claim_text})}><span className="dashboard-case-id">CK-{String(c.id).padStart(3,'0')}</span><span className="dashboard-case-main"><strong title={c.claim_text}>{c.claim_text}</strong><small>{date(c.created_at,locale)}</small></span><span className="dashboard-case-type">{t(`common.type.${c.content_type==='texte'?'text':c.content_type}`)}</span><Pill kind={c.status==='reviewed'?'good':'neutral'}>{t(`common.status.${c.status==='reviewed'?'reviewed':c.status==='review_requested'?'review':c.status==='changes_requested'?'changes':c.status==='concluded'?'concluded':'inProgress'}`)}</Pill><span className="dashboard-open">{t('common.open')} <ChevronRight size={16}/></span></Link>)}</div>}</section></>}
- </div>}
+const caseReference=(id:number)=>`CK-${String(id).padStart(3,'0')}`;
+const caseStatusKey=(status:string)=>status==='reviewed'?'reviewed':status==='review_requested'?'review':status==='changes_requested'?'changes':status==='concluded'?'concluded':'inProgress';
+
+function Dashboard(){
+ const {t,locale,errorMessage}=useI18n();
+ const [data,setData]=useState<{items:CaseItem[];total:number;concluded:number;latest_unfinished:{id:number;claim_text:string;status:string;updated_at:string}|null}|null>(null);
+ const [error,setError]=useState('');
+ useEffect(()=>{let active=true;api<{items:CaseItem[];total:number;concluded:number;latest_unfinished:{id:number;claim_text:string;status:string;updated_at:string}|null}>('/cases').then(result=>{if(active)setData(result)}).catch(e=>{if(active)setError(errorMessage(e))});return()=>{active=false}},[errorMessage]);
+ const unfinished=data?.latest_unfinished;
+ return <div className="dashboard">
+  <div className="dashboard-heading page-heading"><div><h1>{t('home.title')}</h1><p>{t('home.description')}</p></div><Link className="btn primary" to="/verifier"><Plus size={21}/> {t('home.new')}</Link></div>
+  {error&&<ErrorBox message={error}/>}
+  {!data?!error&&<Loading/>:<>
+   <div className="dashboard-stats" aria-label={t('home.stats')}>
+    <div className="dashboard-stat"><span className="dashboard-stat-icon"><FolderOpen size={23}/></span><span>{t('home.folders')}</span><strong>{data.total}</strong></div>
+    <div className="dashboard-stat"><span className="dashboard-stat-icon"><CheckCircle2 size={23}/></span><span>{t('home.conclusions')}</span><strong>{data.concluded}</strong></div>
+    <div className="dashboard-stat"><span className="dashboard-stat-icon"><Clock3 size={23}/></span><span>{t('home.followUp')}</span><strong>{data.total-data.concluded}</strong></div>
+   </div>
+   <section className="dashboard-resume" aria-labelledby="home-resume-title"><div className="dashboard-resume-copy"><span className="dashboard-kicker">{t('home.resumeKicker')}</span><h2 id="home-resume-title">{t('home.resume')}</h2>{unfinished?<><span className="dashboard-resume-reference">{caseReference(unfinished.id)}</span><p>{unfinished.claim_text}</p><small>{t('home.updated',{date:date(unfinished.updated_at,locale)})} · {t(`common.status.${caseStatusKey(unfinished.status)}`)}</small></>:<p>{t('home.resumeEmpty')}</p>}</div>{unfinished&&<Link className="btn secondary dashboard-resume-action" to={`/dossiers/${unfinished.id}`}>{t('home.resumeAction')} <ArrowRight size={17}/></Link>}</section>
+   <section className="panel dashboard-recent" aria-labelledby="home-recent-title"><div className="dashboard-recent-head"><h2 id="home-recent-title">{t('home.recent')}</h2><Link to="/dossiers" className="text-link">{t('home.all')} <ArrowRight size={16}/></Link></div>{!data.items.length?<div className="dashboard-empty"><FolderOpen size={28}/><p>{t('home.empty')}</p><Link to="/verifier" className="text-link">{t('home.new')} <ArrowRight size={16}/></Link></div>:<div className="dashboard-list">{data.items.slice(0,5).map(c=><Link className="dashboard-row" to={`/dossiers/${c.id}`} key={c.id} aria-label={t('home.openCase',{id:String(c.id).padStart(3,'0'),claim:c.claim_text})}><span className="dashboard-case-id">{caseReference(c.id)}</span><span className="dashboard-case-main"><strong title={c.claim_text}>{c.claim_text}</strong><small>{date(c.created_at,locale)}</small></span><span className="dashboard-case-type">{t(`common.type.${c.content_type==='texte'?'text':c.content_type}`)}</span><Pill kind={c.status==='reviewed'?'good':'neutral'}>{t(`common.status.${caseStatusKey(c.status)}`)}</Pill><span className="dashboard-open">{t('common.open')} <ChevronRight size={16}/></span></Link>)}</div>}</section>
+   <Link className="dashboard-news-link" to="/actualites"><Activity size={17}/>{t('home.news')}<ArrowRight size={15}/></Link>
+  </>}
+ </div>;
+}
 
 function Verify(){
  const {t,errorMessage}=useI18n();

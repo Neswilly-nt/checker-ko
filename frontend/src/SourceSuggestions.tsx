@@ -11,7 +11,7 @@ export default function SourceSuggestions({record}:{record:Case}){
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  useEffect(()=>{let active=true;setLoading(true);api<{items:DirectorySource[]}>('/sources').then(data=>{if(active){setSources(data.items);setError('')}}).catch(reason=>{if(active)setError(errorMessage(reason))}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[errorMessage]);
- const suggestions=sources.filter(source=>!source.archived&&source.sector===record.sector&&(!record.region||!source.region||source.region===record.region||source.geographic_scope?.toLowerCase().includes('madagascar'))).sort((a,b)=>{
+ const suggestions=sources.filter(source=>!source.archived&&!source.demo_only&&source.sector===record.sector&&(!record.region||!source.region||source.region===record.region||source.geographic_scope?.toLowerCase().includes('madagascar'))).sort((a,b)=>{
   const rank=(source:DirectorySource)=>Number(Boolean(record.region&&source.region===record.region))*4+Number(Boolean(!source.region||source.geographic_scope?.toLowerCase().includes('madagascar')))*2+Number(source.verification_status==='verifiees');
   return rank(b)-rank(a)||a.organization.localeCompare(b.organization);
  }).slice(0,3);

@@ -31,7 +31,7 @@ git commit -m "feat: décrire le changement"
 git push -u origin feat/ma-modification
 ```
 
-Ouvrir ensuite une PR vers **`develop`** dans GitHub. Décrire le changement, les tests exécutés, les migrations éventuelles et les effets sur le déploiement. Faire relire la PR, attendre la réussite des jobs `backend` et `frontend` dans **Checks**, puis fusionner manuellement. Corriger tout échec CI avant le merge. Ne jamais faire `git push --force` sur une branche partagée.
+Ouvrir ensuite une PR vers **`develop`** dans GitHub : vérifier explicitement le champ **base**, car GitHub peut proposer `main`, sa branche par défaut. Décrire le changement, les tests exécutés, les migrations éventuelles et les effets sur le déploiement. Faire relire la PR, attendre la réussite des jobs `backend` et `frontend` dans **Checks**, puis fusionner manuellement. Corriger tout échec CI avant le merge. Ne jamais faire `git push --force` sur une branche partagée.
 
 Pour mettre sa branche à jour avant le merge :
 

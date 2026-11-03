@@ -593,6 +593,7 @@
   "verify.chooseFileAction": "Choisir un fichier",
   "verify.dropFile": "ou glissez-déposez-le ici",
   "verify.fileSelected": "Fichier prêt à être analysé",
+  "verify.removeFile": "Supprimer le fichier",
   "verify.textHelp": "Saisissez l’affirmation ou collez le lien à examiner.",
   "verify.claimPlaceholder": "Ex. : Cette image montre un événement à Madagascar.",
   "verify.draft": "Enregistrer en brouillon",

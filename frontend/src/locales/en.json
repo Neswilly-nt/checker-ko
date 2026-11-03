@@ -593,6 +593,7 @@
   "verify.chooseFileAction": "Choose a file",
   "verify.dropFile": "or drag and drop it here",
   "verify.fileSelected": "File ready for analysis",
+  "verify.removeFile": "Remove file",
   "verify.textHelp": "Enter the claim or paste the link you want to examine.",
   "verify.claimPlaceholder": "Example: This image shows an event in Madagascar.",
   "verify.draft": "Save as draft",

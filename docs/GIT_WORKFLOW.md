@@ -1,15 +1,56 @@
-﻿# Travail Git en équipe
+# Travail Git en équipe
 
-`main` représente la version stable et `develop` est la branche d'intégration active. Pour Checker-ko, travailler et pousser directement sur `develop`; ne pas créer de branche de fonctionnalité ni ouvrir de Pull Request pour ce flux. Synchroniser `develop` avec `origin/develop` avant de commencer. Garder les commits cohérents, en Conventional Commits, et vérifier les contrôles CI après le push. Éviter les commits qui cassent volontairement l'application.
+`develop` est la branche intégrée et celle que suivent les deux services Render. `main` reste la branche stable du dépôt. Chaque modification passe par une branche personnelle et une Pull Request (PR) vers `develop`. Le merge est une décision humaine : aucun merge automatique n'est configuré.
 
-Utiliser des messages Conventional Commits, par exemple `feat(video): ...`, `fix(ui): ...`, `test(api): ...`, `docs: ...` ou `chore(repo): ...`. Garder chaque commit cohérent et vérifiable. Avant une Pull Request, lancer `npm run check` et `npm run build` dans `frontend/`, puis `python -m pytest -q` dans `backend/`. La CI répète ces contrôles sur les pushes et Pull Requests vers `main`.
+## Première contribution
 
-Ne jamais ajouter à Git `backend/private_data/`, des bases SQLite, des médias d'enquête, des exports PDF, des sauvegardes, des fichiers `.env` réels, des secrets ou des copies locales des outils médias. Vérifier `git status --short`, `git diff --cached --name-only` et le contenu indexé avant chaque commit. `.gitignore` protège les chemins connus, mais ne remplace pas une revue. Si un secret est publié, interrompre sa diffusion, le révoquer et coordonner la correction avec l'équipe ; ne pas réécrire l'historique partagé sans accord.
+Le propriétaire du dépôt invite les personnes qui doivent pousser des branches directement : GitHub → dépôt `Neswilly-nt/checker-ko` → **Settings** → **Collaborators and teams** → **Add people**. Chaque personne accepte l'invitation et configure son accès GitHub. Une personne sans accès en écriture peut forker le dépôt et ouvrir une PR depuis son fork. Ne partager ni compte GitHub ni jeton personnel.
 
-Les fixtures de `backend/demo_assets/` sont fictives et nécessaires aux tests. Les archives privées restent sur le poste de l'équipe, hors du dépôt et de la CI. Les nouvelles données de test doivent être synthétiques ou accompagnées des droits nécessaires.
+```powershell
+git clone https://github.com/Neswilly-nt/checker-ko.git
+cd checker-ko
+git fetch origin
+git switch develop
+git pull --ff-only origin develop
+git switch -c feat/ma-modification
+```
 
-Pour mettre à jour `develop` : récupérer `origin/develop`, intégrer ses changements localement et relancer les tests. Ne jamais utiliser `git push --force`. Les fonctionnalités photo, vidéo, texte, preuves, sources et conclusions doivent rester couvertes lors de leur modification.
+Si le dépôt est déjà cloné, commencer à `git fetch origin`. Choisir un nom de branche distinct par modification (`feat/...`, `fix/...`, `docs/...`). Un collaborateur utilisant un fork remplace `origin` par le nom de son propre remote pour le push et choisit `Neswilly-nt/checker-ko:develop` comme destination de la PR.
 
-## Avis de dépendances
+## Modifier, tester et proposer
 
-Le contrôle npm local a signalé deux avis de sévérité modérée liés à React Router 6. Ils demandent un examen ciblé avec `npm audit` et une mise à jour testée, sans `npm audit fix --force` ni migration majeure automatique. Le projet n'est pas prêt pour une exposition publique avant une revue de sécurité plus large ; voir [les limites](LIMITES.md).
+Avant le commit, vérifier les fichiers :
+
+```powershell
+git status --short
+git diff --check
+git add <fichiers-voulus>
+git diff --cached --name-only
+git diff --cached
+git commit -m "feat: décrire le changement"
+git push -u origin feat/ma-modification
+```
+
+Ouvrir ensuite une PR vers **`develop`** dans GitHub. Décrire le changement, les tests exécutés, les migrations éventuelles et les effets sur le déploiement. Faire relire la PR, attendre la réussite des jobs `backend` et `frontend` dans **Checks**, puis fusionner manuellement. Corriger tout échec CI avant le merge. Ne jamais faire `git push --force` sur une branche partagée.
+
+Pour mettre sa branche à jour avant le merge :
+
+```powershell
+git fetch origin
+git switch feat/ma-modification
+git merge origin/develop
+```
+
+Résoudre les conflits, relancer les tests concernés et pousser de nouveau la branche. Les contrôles locaux utiles sont `npm run check`, `npm run i18n:check` et `npm run build` dans `frontend/`, puis `python -m pytest -q` dans `backend/`. La CI vérifie aussi PostgreSQL, Alembic et les dépendances.
+
+## Ce qui part en ligne
+
+Après un merge dans `develop`, GitHub Actions exécute la CI sur le nouveau commit. Les deux services Render sont configurés avec `autoDeployTrigger: checksPass` : ils déploient ce commit seulement si les contrôles GitHub réussissent. Un push sur une branche de fonctionnalité ou sur `main` ne met pas à jour ces services. Vérifier le commit déployé et les journaux de **checker-ko-demo-api** et **checker-ko-demo-web** dans Render, puis contrôler la connexion et une page utilisant l'API. Si le backend échoue au démarrage ou si la migration échoue, le site peut rester sur une version différente : consulter les deux déploiements et suivre la procédure de restauration de [Render + Supabase](RENDER_SUPABASE_DEMO.md).
+
+La première activation demande un **Blueprint sync** du `render.yaml` fusionné dans le tableau de bord Render, ou le réglage **Auto-Deploy → After CI Checks Pass** sur chacun des deux services. Vérifier que **Blueprint Auto Sync** est activé pour que les changements suivants de `render.yaml` soient pris en compte. Une modification manuelle du service peut être remplacée par une synchronisation Blueprint.
+
+Une PR qui modifie la base ou le stockage doit prévoir une migration non destructive et un plan de retour. Avant un tel merge, réaliser et vérifier une sauvegarde **PostgreSQL et Storage**. Ne pas tester avec des dossiers journalistiques réels sur la démonstration.
+
+## Données et secrets
+
+Ne jamais ajouter à Git `backend/private_data/`, des bases SQLite, médias d'enquête, exports PDF, sauvegardes, fichiers `.env` réels ou secrets. Les fixtures de `backend/demo_assets/` sont fictives. Les variables secrètes vivent dans Render et Supabase, jamais dans `VITE_...` ni dans les PR. Si un secret est publié, le révoquer et coordonner sa rotation avec l'équipe. Le dépôt déployé est une démonstration publique, pas un environnement validé pour de vrais dossiers journalistiques.

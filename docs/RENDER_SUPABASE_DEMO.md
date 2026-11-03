@@ -1,6 +1,12 @@
 # Démonstration temporaire Render + Supabase
 
-Cette configuration prépare deux services Render gratuits et un projet Supabase gratuit, mais **ne crée aucun service et ne déclenche aucun déploiement**. Render Web Service est joignable depuis Internet dès sa création : ne synchroniser le Blueprint qu'après validation humaine et avec un projet Supabase vide réservé à la démo.
+Le Blueprint décrit les deux services Render gratuits déjà utilisés pour la démonstration et un projet Supabase gratuit. Les données de démonstration doivent rester fictives. Cette configuration ne valide pas l'application pour des dossiers journalistiques réels.
+
+## Mises à jour automatiques
+
+Les services API et web suivent `develop` et utilisent `autoDeployTrigger: checksPass`. Après la fusion manuelle d'une PR vers `develop`, Render attend la réussite des contrôles GitHub Actions sur le nouveau commit avant de lancer les deux déploiements. Un échec CI bloque ce déploiement automatique. Un build ou un démarrage Render peut encore échouer après la CI : vérifier les deux statuts dans Render, puis tester la connexion et une page qui utilise l'API. Les déploiements des deux services ne sont pas atomiques.
+
+Après la fusion de ce changement, synchroniser une fois le Blueprint dans Render, ou régler **Auto-Deploy → After CI Checks Pass** dans les paramètres de **chacun** des deux services. Vérifier que **Blueprint Auto Sync** est activé si `render.yaml` doit continuer à piloter ces paramètres. Ne pas réimporter le Blueprint comme une nouvelle application : conserver les deux services et leurs secrets existants. Voir [le flux Git de l'équipe](GIT_WORKFLOW.md) pour les branches, PR et contrôles.
 
 ## Architecture de session
 
@@ -24,7 +30,7 @@ Pour le mode direct, la CSP du Static Site doit également ajouter l'origine exa
 1. Créer manuellement un projet Supabase gratuit **neuf**, dans la région disponible proche de Render. Ne pas réutiliser une base d'équipe ou des données journalistiques.
 2. Dans Storage, créer le bucket `checker-private` avec **Public bucket désactivé**. L'application vérifie cette propriété au démarrage; aucun lien public ou URL signée n'est remis au navigateur.
 3. Copier la chaîne **Session pooler** depuis Supabase Connect (IPv4) et l'adapter en `postgresql+psycopg://...:5432/postgres?sslmode=require`. Encoder les caractères spéciaux du mot de passe. Le mode transaction (6543) n'est pas utilisé par cette configuration SQLAlchemy/Alembic.
-4. Après décision manuelle de créer les ressources, synchroniser `render.yaml`. Variables non secrètes définies dans le Blueprint :
+4. Pour une nouvelle installation seulement, synchroniser `render.yaml` après avoir créé les ressources et renseigné les secrets. Variables non secrètes définies dans le Blueprint :
 
 | Service API | Valeur |
 | --- | --- |

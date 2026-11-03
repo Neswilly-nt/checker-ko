@@ -40,7 +40,9 @@ Pour le mode direct, la CSP du Static Site doit également ajouter l'origine exa
 | `DATABASE_URL` | chaîne session-pooler avec pilote `postgresql+psycopg` et SSL |
 | `CHECKER_CORS_ORIGINS` | origine HTTPS exacte du frontend Render |
 | `CHECKER_SUPABASE_URL` | URL HTTPS du projet Supabase, sans chemin |
-| `CHECKER_SUPABASE_SERVICE_ROLE_KEY` | clé service role, uniquement dans les secrets Render |
+| `CHECKER_SUPABASE_SERVICE_ROLE_KEY` | clé Secret `sb_secret_…` (recommandée) ou ancienne clé `service_role`, uniquement dans les secrets Render |
+
+Pour les nouvelles clés Supabase `sb_secret_…`, l'adaptateur envoie la clé dans l'en-tête `apikey` seulement. Les anciennes clés JWT `service_role` sont envoyées dans `apikey` et `Authorization: Bearer`. Ne jamais fournir une clé `sb_publishable_…` pour cet accès serveur.
 
 Variables Static Site : `VITE_CHECKER_API_URL=/api`. Une variable Vite est publique après compilation : n'y placer aucun secret.
 

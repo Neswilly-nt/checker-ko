@@ -25,7 +25,7 @@ def test_supabase_storage_is_private_and_accessed_only_server_side(monkeypatch):
     monkeypatch.setattr(storage, 'BACKEND', 'supabase')
     monkeypatch.setattr(storage, 'BUCKET', 'checker-private')
     monkeypatch.setenv('CHECKER_SUPABASE_URL', 'https://project-ref.supabase.co')
-    monkeypatch.setenv('CHECKER_SUPABASE_SERVICE_ROLE_KEY', 'test-only-secret')
+    monkeypatch.setenv('CHECKER_SUPABASE_SERVICE_ROLE_KEY', 'sb_secret_test-only-secret')
     calls=[]
 
     class Response:
@@ -54,8 +54,16 @@ def test_supabase_storage_is_private_and_accessed_only_server_side(monkeypatch):
         assert Path(path).read_bytes()==b'fictional-image'
     assert not Path(path).exists()
     storage.delete('images/fictional.png')
-    assert calls[0][0]=='get' and calls[0][2]['headers']['Authorization']=='Bearer test-only-secret'
+    assert calls[0][0]=='get' and calls[0][2]['headers']=={'apikey':'sb_secret_test-only-secret'}
     assert all('/object/public/' not in call[1] for call in calls)
+
+
+def test_legacy_supabase_service_role_jwt_is_sent_as_bearer():
+    key='eyJlegacy-service-role-test'
+    assert storage._supabase_headers(key)=={
+        'apikey':key,
+        'Authorization':f'Bearer {key}',
+    }
 
 
 def test_supabase_storage_rejects_public_bucket(monkeypatch):

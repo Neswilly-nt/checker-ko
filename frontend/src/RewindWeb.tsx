@@ -1,7 +1,7 @@
 /** REWIND WEB: investigation assistée, jamais une recherche automatique ni un verdict algorithmique. */
 import {useState, type FormEvent} from 'react';
 import {Download, ExternalLink, Globe2, Info, Link2, LockKeyhole, Plus, Search, ShieldCheck} from 'lucide-react';
-import {api, jsonRequest} from './api';
+import {api, apiUrl, jsonRequest} from './api';
 import {Tx,useI18n} from './i18n';
 import type {Case,Media} from './types';
 
@@ -32,7 +32,7 @@ export default function RewindWeb({record,mine,action}:{record:Case&{media:Media
      // La copie JPEG est un aperçu privé fourni par l'API, sans EXIF/GPS.
      // Ne jamais envoyer le jeton d'authentification à un service externe.
      if(!/^\/api\/media\/\d+\/preview$/.test(record.media.preview_url)){setError(t('rewind.previewUnavailable'));return;}
-     const response=await fetch(record.media.preview_url,{credentials:'same-origin',cache:'no-store'});
+     const response=await fetch(apiUrl(record.media.preview_url),{credentials:new URL(apiUrl(record.media.preview_url),window.location.href).origin===window.location.origin?'same-origin':'include',cache:'no-store'});
      if(!response.ok){setError(errorMessage({status:response.status}));return;}
      const blob=await response.blob();
      if(!blob.type.startsWith('image/')){setError(t('errors.unsupported'));return;}

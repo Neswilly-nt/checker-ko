@@ -1,11 +1,21 @@
 export class ApiError extends Error {constructor(public status:number,message:string){super(message)}}
 
+const configuredApiUrl=(import.meta.env.VITE_CHECKER_API_URL||'').trim().replace(/\/+$/,'');
+const apiBase=configuredApiUrl||'/api';
+
+export function apiUrl(path:string):string{
+  const endpoint=path.replace(/^\/api(?=\/|$)/,'');
+  return `${apiBase}${endpoint.startsWith('/')?endpoint:`/${endpoint}`}`;
+}
+
 export async function api<T>(url:string, options:RequestInit={}):Promise<T>{
   const headers=new Headers(options.headers||{});
   headers.set('X-Checker-CSRF','1');
   if(options.body&&!(options.body instanceof FormData))headers.set('Content-Type','application/json');
   let response:Response;
-  try{response=await fetch('/api'+url,{...options,headers,credentials:'same-origin',cache:'no-store'})}
+  const requestUrl=apiUrl(url);
+  const credentials=new URL(requestUrl,window.location.href).origin===window.location.origin?'same-origin':'include';
+  try{response=await fetch(requestUrl,{...options,headers,credentials,cache:'no-store'})}
   catch{throw new ApiError(0,'Serveur indisponible. Vérifiez que FastAPI est lancé sur le port 8000.')}
   let payload:unknown;
   try{payload=await response.json()}catch{payload=null}

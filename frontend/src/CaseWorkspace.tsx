@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent,type ReactNode} fro
 import {Tx,useI18n} from './i18n';
 import {Link,useParams} from 'react-router-dom';
 import {ArrowLeft,BookOpen,Check,ChevronDown,ExternalLink,FileCheck2,FileText,Info,Plus,Printer,Search,ShieldQuestion} from 'lucide-react';
-import {api,jsonRequest} from './api';
+import {api,apiUrl,jsonRequest} from './api';
 import RewindWeb from './RewindWeb';
 import type {AssessmentStatus,Case,Evidence,Match,Media,SocialPost,User} from './types';
 
@@ -15,7 +15,7 @@ const statusKey:Record<string,string>={en_cours:'common.status.inProgress',concl
 function Notice({children}:{children:ReactNode}){return <div className="work-notice" role="status"><Check size={15}/>{children}</div>}
 function ProtectedImage({media,className=''}:{media:Media;className?:string}){
  const [src,setSrc]=useState('');
- useEffect(()=>{let active=true;let objectUrl='';setSrc('');fetch(media.preview_url,{credentials:'same-origin',cache:'no-store'}).then(r=>{if(!r.ok)throw Error('Aperçu indisponible');return r.blob()}).then(blob=>{objectUrl=URL.createObjectURL(blob);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{});return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)}},[media.preview_url]);
+ useEffect(()=>{let active=true;let objectUrl='';setSrc('');fetch(apiUrl(media.preview_url),{credentials:new URL(apiUrl(media.preview_url),window.location.href).origin===window.location.origin?'same-origin':'include',cache:'no-store'}).then(r=>{if(!r.ok)throw Error('Aperçu indisponible');return r.blob()}).then(blob=>{objectUrl=URL.createObjectURL(blob);if(active)setSrc(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>{});return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)}},[media.preview_url]);
  return src?<img className={className} src={src} alt={media.filename}/>:<span className="work-image-fallback"><Tx id="common.previewUnavailable"/></span>;
 }
 

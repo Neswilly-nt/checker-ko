@@ -1,13 +1,15 @@
-# Scénarios de démonstration locaux
+# Scenarios de demonstration locaux
 
-`backend/scripts/seed_local_test_scenarios.py` prépare quatre dossiers explicitement étiquetés `[TEST]` : texte, photo de démonstration déjà présente dans le dépôt, vidéo MP4 synthétique de deux secondes et article RSS fictif. Il ajoute aussi une fiche de source, des éléments de preuve de contexte et des conclusions de test.
+`backend/scripts/seed_local_test_scenarios.py` prepare une base SQLite isolee sous `backend/private_data/demo/checker_demo.db` et les medias sous `backend/private_data/demo/storage`. Il cree six dossiers explicitement marques `[TEST]` : une affirmation textuelle, une photo autorisee du depot, une video MP4 synthetique de deux secondes, un article RSS fictif, une observation statistique fictive, et un bulletin meteo fictif. Les sources et publications officielles restent separees des valeurs inventees.
 
-Depuis `backend`, dans un environnement Python avec les dépendances backend et FFmpeg installés :
+Prerequis : environnement virtuel backend installe et FFmpeg/ffprobe disponibles. Depuis le dossier `backend` :
 
 ```powershell
-python scripts/seed_local_test_scenarios.py
+.venv\Scripts\python.exe scripts\seed_local_test_scenarios.py
 ```
 
-Le script utilise toujours `backend/.demo-test-data/checker-test.sqlite3` et `backend/.demo-test-data/storage`. Il force SQLite et le stockage local avant d’importer l’application, n’accepte aucune URL de base en argument, ne supprime aucune ligne et réutilise les objets `[TEST]` lors des exécutions suivantes. Cette base dédiée ne doit pas être remplacée par `DATABASE_URL` de Render, Supabase ou une base d’équipe.
+Le script force `APP_ENV=development`, le mode demo, une option locale de catalogue, SQLite dedie et stockage local avant import de lapplication. Les executions suivantes reutilisent les enregistrements `[TEST]`. Pour reconstruire la base, utiliser `--reset` uniquement si le marqueur `.checker-ko-demo-data` est present; le script ne touche quaux fichiers exacts de la base et du stockage dedies. Ne passez jamais lURL de Render, Supabase ou dune base dequipe a ce script.
 
-L’existence d’un endpoint public ne révèle pas le moteur ni le backend de stockage configurés dans l’instance Render. Aucune insertion distante n’est prévue par ce script. Vérifier ces services dans le tableau de bord Render/Supabase avant toute opération opérateur distincte.
+Les comptes de test locaux sont generes dans le fichier ignore `backend/private_data/demo/credentials.json`; le script affiche les identifiants au moment de sa premiere execution. Ne pas reutiliser ces identifiants hors de lapplication locale.
+
+Le contenu fictif utilise le domaine reserve `example.test`; il ne doit pas etre cite comme une information reelle. Les publications institutionnelles sont des liens documentaires verifiables, indiquees comme partiellement verifiees lorsquun contact ou une ressource na pas ete controle.

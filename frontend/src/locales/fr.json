@@ -639,5 +639,10 @@
   "guidance.searchManually": "Rechercher manuellement dans l’annuaire",
   "workspace.newsProvenanceTitle": "Provenance de l’article",
   "workspace.newsArticleType": "Article de presse · à vérifier",
-  "workspace.newsProvenanceDisclaimer": "Cette publication est un point de départ pour l’enquête, pas une preuve validée."
+  "workspace.newsProvenanceDisclaimer": "Cette publication est un point de départ pour l’enquête, pas une preuve validée.",
+  "sector.agriculture": "Agriculture",
+  "sector.water": "Eau et assainissement",
+  "sector.justice": "Justice",
+  "sector.transport": "Transports",
+  "stats.demoLabel": "DONNÉE FICTIVE — DÉMONSTRATION · ne pas citer comme donnée réelle"
 }

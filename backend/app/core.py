@@ -291,6 +291,8 @@ APP_ENV = os.environ.get('APP_ENV', 'development')
 if APP_ENV not in ('development', 'test', 'production'):
     raise RuntimeError('APP_ENV doit valoir development, test ou production')
 DEMO_MODE = os.environ.get('CHECKER_DEMO_MODE','').strip().lower()=='true'
+LOCAL_DEMO_CATALOG = (DEMO_MODE and APP_ENV == 'development' and DB_URL.startswith('sqlite:')
+    and os.environ.get('CHECKER_DEMO_LOCAL_CATALOG','').strip().lower()=='true')
 DEMO_USERS = [('journaliste@checker.local', 'Journaliste Démo', 'journalist', 'Journaliste2026!'), ('redaction@checker.local', 'Responsable Rédaction', 'editor', 'Redaction2026!')]
 
 def hash_password(password):
@@ -572,7 +574,7 @@ def init_db():
                     sectors_json='["autre"]',checked_at='2026-11-03',
                     reuse_terms='Consulter les conditions du site éditeur avant toute republication.',enabled=True))
         db.commit()
-        if not DEMO_MODE:
+        if not DEMO_MODE or LOCAL_DEMO_CATALOG:
             for old in db.query(DirectorySource).filter_by(demo_only=True,archived=False).all():
                 old.archived=True
             for entry in CATALOG:

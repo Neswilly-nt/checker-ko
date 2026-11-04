@@ -26,12 +26,16 @@ from sqlalchemy import or_
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from .core import (Analysis, Case, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
-    now, init_db, DEMO_USERS, DEMO_MODE, make_token, revoke_token, get_user, verify_password, store_media, media_view,
+    now, init_db, DEMO_USERS, DEMO_MODE, LOCAL_DEMO_CATALOG, make_token, revoke_token, get_user, verify_password, store_media, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
 from .news import refresh_news, sync_source
 from .statistical_catalog import PUBLICATIONS, publication_view
 from . import storage
+
+DEMO_STATS_KEY='demo-fictitious-values'
+DEMO_STATS_LABEL='DONNÉE FICTIVE — DÉMONSTRATION'
+DEMO_STATS_URL='https://example.test/demo-values-fictitious'
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -676,7 +680,7 @@ def sources(sector:str='',region:str='',organization_type:str='',q:str='',includ
 @app.get('/api/statistics')
 def statistical_publications(sector:str='',q:str='',db:Session=Depends(db_session),user:User=Depends(current_user)):
     """Publication references and persisted observations with their exact provenance."""
-    if DEMO_MODE:return {'items':[],'observation_count':0}
+    if DEMO_MODE and not LOCAL_DEMO_CATALOG:return {'items':[],'observation_count':0}
     query=q.strip().casefold()[:100]
     items=[]
     for publication in PUBLICATIONS:
@@ -688,24 +692,33 @@ def statistical_publications(sector:str='',q:str='',db:Session=Depends(db_sessio
         searchable+=' '+' '.join(row['indicator'].casefold() for row in item['observations'])
         if query and query not in searchable:continue
         items.append(item)
+    if LOCAL_DEMO_CATALOG and (not sector or sector=='autre'):
+        demo_rows=db.query(StatisticalObservation).filter_by(publication_key=DEMO_STATS_KEY).order_by(StatisticalObservation.year.desc(),StatisticalObservation.id.desc()).all()
+        if demo_rows:
+            demo_item={'key':DEMO_STATS_KEY,'title':'Saisie de démonstration : valeurs fictives','producer':'Aucun organisme réel','sector':'autre','reference_year':'2026','publication_date':None,'coverage':'Périmètre fictif — aucune couverture réelle','format':'Exemples de saisie','url':DEMO_STATS_URL,'landing_url':DEMO_STATS_URL,'description':DEMO_STATS_LABEL+' — ces valeurs sont inventées pour tester le formulaire et ne proviennent d’aucune publication.','accessibility':'fictional_demo','last_link_check':None,'observations':[observation_view(row) for row in demo_rows]}
+            searchable=' '.join(str(demo_item.get(k) or '') for k in ('title','producer','sector','description','reference_year')).casefold()
+            searchable+=' '+' '.join(row['indicator'].casefold() for row in demo_item['observations'])
+            if not query or query in searchable:items.append(demo_item)
     return {'items':items,'observation_count':sum(len(item['observations']) for item in items)}
 
 def observation_view(row):
     return {'id':row.id,'publication_key':row.publication_key,'source_title':row.source_title,'source_url':row.source_url,
         'indicator':row.indicator,'value':row.value,'unit':row.unit,'year':row.year,'region':row.region,
-        'source_locator':row.source_locator,'created_at':row.created_at}
+        'source_locator':row.source_locator,'created_at':row.created_at,'is_demo':row.publication_key==DEMO_STATS_KEY}
 
 @app.post('/api/statistics/observations',status_code=201)
 def add_statistical_observation(data:StatisticalObservationIn,db:Session=Depends(db_session),user:User=Depends(current_user)):
     if user.role!='editor':raise HTTPException(403,'Réservé à la rédaction')
+    demo_observation=data.publication_key==DEMO_STATS_KEY
+    if demo_observation and not LOCAL_DEMO_CATALOG:raise HTTPException(422,'Publication fictive réservée à la démo locale')
     publication=next((item for item in PUBLICATIONS if item['key']==data.publication_key),None)
-    if not publication:raise HTTPException(422,'Choisissez une publication documentée du catalogue')
+    if not demo_observation and not publication:raise HTTPException(422,'Choisissez une publication documentée du catalogue')
     try:
         value=Decimal(data.value.strip())
         if not value.is_finite() or len(value.as_tuple().digits)>18 or abs(value.as_tuple().exponent)>8:raise InvalidOperation
     except (InvalidOperation,ValueError):raise HTTPException(422,'La valeur doit être un nombre décimal fini')
     normalized=format(value,'f')
-    row=StatisticalObservation(publication_key=publication['key'],source_title=publication['title'],source_url=valid_url(publication['url']),
+    row=StatisticalObservation(publication_key=DEMO_STATS_KEY if demo_observation else publication['key'],source_title=DEMO_STATS_LABEL if demo_observation else publication['title'],source_url=valid_url(DEMO_STATS_URL if demo_observation else publication['url']),
         indicator=data.indicator.strip(),value=normalized,unit=data.unit.strip(),year=data.year,region=checked_region(data.region),
         source_locator=data.source_locator.strip(),created_by=user.id)
     db.add(row);db.commit();db.refresh(row)

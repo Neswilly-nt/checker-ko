@@ -639,5 +639,10 @@
   "guidance.searchManually": "Mitady tanana ao amin’ny lahatahiry",
   "workspace.newsProvenanceTitle": "Loharanon’ny lahatsoratra",
   "workspace.newsArticleType": "Lahatsoratra an-gazety · mbola hohamarinina",
-  "workspace.newsProvenanceDisclaimer": "Fiandohan’ny fanadihadiana ity lahatsoratra ity fa tsy porofo voamarina."
+  "workspace.newsProvenanceDisclaimer": "Fiandohan’ny fanadihadiana ity lahatsoratra ity fa tsy porofo voamarina.",
+  "sector.agriculture": "Fambolena",
+  "sector.water": "Rano sy fanadiovana",
+  "sector.justice": "Fitsarana",
+  "sector.transport": "Fitaterana",
+  "stats.demoLabel": "ANGON-DRISA FORONINA — HO AN’NY DEMONSTRATION · aza raisina ho tena angon-drisa"
 }

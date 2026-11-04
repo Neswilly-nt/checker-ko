@@ -6,6 +6,7 @@ from app.core import c2pa_analyze, inspect_image, MAX_BYTES
 from app.core import SessionLocal, Case
 from app.core import NewsItem, NewsSource, NewsSync
 from app.news import parse_feed, sync_source
+from app.source_catalog import CATALOG
 
 ASSETS=Path(__file__).parents[1]/'demo_assets'
 
@@ -184,14 +185,14 @@ def test_review_optional_and_by_other_user(client,journalist,editor,upload_case)
 
 def test_directory_and_unverified_demo_labels(client,journalist,editor):
     values=client.get('/api/sources',headers=journalist).json()['items']
-    assert len(values)==5
+    assert len(values)==len(CATALOG)
     assert all(not x['demo_only'] and not x['archived'] for x in values)
-    assert {x['acronym'] for x in values}=={'BNGRC','MEN','INSTAT','METFP','DGM'}
+    assert {x['acronym'] for x in values}=={entry['acronym'] for entry in CATALOG}
     assert all(x['website_url'] and x['reference_url'] for x in values)
     assert client.get('/api/sources?include_archived=true',headers=journalist).status_code==403
     assert len(client.get('/api/sources?sector=éducation',headers=journalist).json()['items'])==2
-    assert len(client.get('/api/sources?region=National%20%2F%20Tout%20Madagascar',headers=journalist).json()['items'])==5
-    assert len(client.get('/api/sources?organization_type=ministère',headers=journalist).json()['items'])==2
+    assert len(client.get('/api/sources?region=National%20%2F%20Tout%20Madagascar',headers=journalist).json()['items'])==len(CATALOG)
+    assert len(client.get('/api/sources?organization_type=minist%C3%A8re',headers=journalist).json()['items'])==sum(entry['kind']=='ministère' for entry in CATALOG)
     assert client.get('/api/sources/1',headers=journalist).status_code==200
     assert client.post('/api/sources',headers=journalist,json={'organization':'Organisme local','sector':'santé','description':'Un service public à examiner'}).status_code==403
     created=client.post('/api/sources',headers=editor,json={'organization':'Organisme local','sector':'santé','description':'Un service public à examiner'})
@@ -329,6 +330,24 @@ def test_news_invalid_feed_and_unknown_dates():
     assert parse_feed(b'<rss><channel><item><title>Sans lien</title></item></channel></rss>')==[]
     parsed=parse_feed(b'<rss><channel><item><guid>x</guid><title>Sans date</title><link>https://example.org/x</link></item></channel></rss>')
     assert parsed[0]['published_at'] is None
+
+def test_fictional_statistics_are_restricted_to_local_demo(client,editor,monkeypatch):
+    monkeypatch.setattr('app.main.LOCAL_DEMO_CATALOG',False)
+    response=client.post('/api/statistics/observations',headers=editor,json={
+        'publication_key':'demo-fictitious-values','indicator':'[TEST] Écoles inventées','value':'7',
+        'unit':'écoles','year':2026,'region':'Analamanga','source_locator':'Exemple fictif sans source'})
+    assert response.status_code==422
+    monkeypatch.setattr('app.main.LOCAL_DEMO_CATALOG',True)
+    created=client.post('/api/statistics/observations',headers=editor,json={
+        'publication_key':'demo-fictitious-values','indicator':'[TEST] Écoles inventées','value':'7',
+        'unit':'écoles','year':2026,'region':'Analamanga','source_locator':'Exemple fictif sans source'})
+    assert created.status_code==201
+    listed=client.get('/api/statistics?sector=autre',headers=editor).json()
+    example=next(item for item in listed['items'] if item['key']=='demo-fictitious-values')
+    observation=example['observations'][0]
+    assert observation['is_demo'] is True
+    assert observation['source_title']=='DONNÉE FICTIVE — DÉMONSTRATION'
+    assert observation['source_url']=='https://example.test/demo-values-fictitious'
 
 def test_news_rejects_script_links_and_xml_entities():
     import pytest

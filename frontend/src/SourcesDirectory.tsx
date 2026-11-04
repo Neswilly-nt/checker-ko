@@ -7,8 +7,8 @@ import {loadRegions,type RegionCatalog} from './regions';
 import StatisticsCatalog from './StatisticsCatalog';
 import type {DirectoryContact,DirectorySource,User} from './types';
 
-const sectors=['éducation','météo/catastrophes','économie','santé','environnement','administration','autre'];
-const sectorKeys:Record<string,string>={autre:'sector.other','météo/catastrophes':'sector.weather','éducation':'sector.education',santé:'sector.health',économie:'sector.economy',environnement:'sector.environment',administration:'sector.administration'};
+const sectors=['éducation','météo/catastrophes','économie','santé','environnement','agriculture','eau et assainissement','justice','transport','administration','autre'];
+const sectorKeys:Record<string,string>={autre:'sector.other','météo/catastrophes':'sector.weather','éducation':'sector.education',santé:'sector.health',économie:'sector.economy',environnement:'sector.environment',agriculture:'sector.agriculture','eau et assainissement':'sector.water',justice:'sector.justice',transport:'sector.transport',administration:'sector.administration'};
 const statusKeys:Record<string,string>={verifiees:'source.statusVerified',partiellement_verifiees:'source.statusPartial',a_actualiser:'source.statusRefresh'};
 type DirectoryForm={organization:string;acronym:string;organization_type:string;sector:string;description:string;website_url:string;geographic_scope:string;region:string;reference_url:string;verification_status:string;last_checked_at:string};
 const blank:DirectoryForm={organization:'',acronym:'',organization_type:'organisme public',sector:'éducation',description:'',website_url:'',geographic_scope:'Tout Madagascar',region:'',reference_url:'',verification_status:'a_actualiser',last_checked_at:''};

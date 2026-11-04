@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import shutil
+import sqlite3
 import sys
 from io import BytesIO
 from datetime import datetime, timezone
@@ -53,9 +54,27 @@ from app.core import (  # noqa: E402
 )
 
 
+def migrate_local_demo_email() -> None:
+    """Rename only the known demo account in the isolated local showcase DB."""
+    if not DB.is_file():
+        return
+    with sqlite3.connect(DB) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if 'users' not in tables:
+            return
+        old, new = 'journaliste@checker.local', 'journaliste@checker.mg'
+        existing = {row[0] for row in connection.execute('SELECT email FROM users WHERE email IN (?, ?)', (old, new))}
+        if old in existing and new in existing:
+            raise SystemExit(f'Migration locale refusée : les deux adresses {old} et {new} existent déjà.')
+        if old in existing:
+            connection.execute('UPDATE users SET email=? WHERE email=?', (new, old))
+        connection.commit()
+
+
 def main() -> None:
     if not ASSET.is_file(): raise SystemExit(f'Photographie NASA absente : {ASSET}')
     if storage.BACKEND != 'local': raise SystemExit('Ce script exige le stockage local.')
+    migrate_local_demo_email()
     init_db()
     with SessionLocal() as db:
         journalist = db.query(User).filter_by(email=DEMO_USERS[0][0]).one()

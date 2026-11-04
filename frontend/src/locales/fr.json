@@ -58,6 +58,8 @@
   "login.assurance": "Des preuves à l’appui. Le jugement reste humain.",
   "login.email": "Adresse e-mail",
   "login.password": "Mot de passe",
+  "login.google": "Se connecter avec Google",
+  "login.googleUnavailable": "Bientôt disponible",
   "login.submit": "Se connecter",
   "login.busy": "Connexion…",
   "login.demoTitle": "Comptes de développement",

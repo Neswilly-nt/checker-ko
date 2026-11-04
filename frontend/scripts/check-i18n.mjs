@@ -40,7 +40,7 @@ await walk(sourceRoot);
 const frenchValues = new Set(Object.values(dictionaries.get('fr')).map(value => value.trim()));
 const allowlisted = new Set([
   'Checker-ko', 'Google Lens', 'TinEye', 'Facebook', 'TikTok', 'WhatsApp', 'Instagram', 'YouTube', 'X', 'Autre',
-  'journaliste@checker.local', 'redaction@checker.local', 'CK-', 's', 's.',
+  'journaliste@checker.mg', 'redaction@checker.local', 'CK-', 's', 's.',
   'good', 'neutral', 'alert', 'status', 'active', 'selected', 'text', 'password', 'MP4',
   'image/jpeg,image/png,image/webp', 'video/mp4',
 ]);

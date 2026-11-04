@@ -238,6 +238,12 @@
 .auth-form-wrap .form-stack>.auth-submit{width:min(100%,260px);align-self:center;min-height:48px;background:#174866;box-shadow:0 7px 18px rgba(23,72,102,.19)}
 .auth-form-wrap .form-stack>.auth-submit:hover:not(:disabled){background:#123b56;filter:none;box-shadow:0 10px 21px rgba(23,72,102,.25)}
 .auth-form-wrap .form-stack>.auth-submit.is-success{background:#16734f}
+.google-login{width:100%;min-height:46px;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid #d7e1e8;border-radius:9px;background:#fff;color:#23384d;font-weight:650}
+.google-login svg{width:19px;height:19px;flex:none}
+.google-login small{font-size:11px;font-weight:500;color:#718096}
+.google-login:disabled{cursor:not-allowed;background:#f8fafc;color:#607184;border-color:#dbe3e9}
+.auth-theme-dark .google-login{background:#213c50;color:#e6eff4;border-color:#456277}
+.auth-theme-dark .google-login:disabled{background:#1c3446;color:#bdcbd5}
 .auth-features{margin-top:22px;gap:8px}
 .auth-features>div{min-height:42px}
 .auth-features svg{padding:9px}

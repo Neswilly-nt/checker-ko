@@ -58,6 +58,8 @@
   "login.assurance": "Porofo azo hamarinina. Olombelona no mandray fanapahan-kevitra.",
   "login.email": "Adiresy mailaka",
   "login.password": "Teny miafina",
+  "login.google": "Hiditra amin’ny Google",
+  "login.googleUnavailable": "Ho hita tsy ho ela",
   "login.submit": "Hiditra",
   "login.busy": "Miditra…",
   "login.demoTitle": "Kaonty andrana",

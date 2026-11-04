@@ -58,6 +58,8 @@
   "login.assurance": "Evidence you can inspect. Final judgement stays human.",
   "login.email": "Email address",
   "login.password": "Password",
+  "login.google": "Sign in with Google",
+  "login.googleUnavailable": "Coming soon",
   "login.submit": "Sign in",
   "login.busy": "Signing in…",
   "login.demoTitle": "Development accounts",

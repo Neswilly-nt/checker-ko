@@ -302,7 +302,7 @@ if APP_ENV not in ('development', 'test', 'production'):
 DEMO_MODE = os.environ.get('CHECKER_DEMO_MODE','').strip().lower()=='true'
 LOCAL_DEMO_CATALOG = (DEMO_MODE and APP_ENV == 'development' and DB_URL.startswith('sqlite:')
     and os.environ.get('CHECKER_DEMO_LOCAL_CATALOG','').strip().lower()=='true')
-DEMO_USERS = [('journaliste@checker.local', 'Journaliste Démo', 'journalist', 'Journaliste2026!'), ('redaction@checker.local', 'Responsable Rédaction', 'editor', 'Redaction2026!')]
+DEMO_USERS = [('journaliste@checker.mg', 'Journaliste Démo', 'journalist', 'Journaliste2026!'), ('redaction@checker.local', 'Responsable Rédaction', 'editor', 'Redaction2026!')]
 
 def hash_password(password):
     salt=secrets.token_bytes(16)

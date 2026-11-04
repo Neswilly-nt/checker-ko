@@ -19,12 +19,12 @@ def test_health(client):
 
 def test_auth(client,journalist):
     assert client.get('/api/auth/me').status_code==401
-    assert client.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'journaliste@checker.local','password':'wrong'}).status_code==401
+    assert client.post('/api/auth/login',headers={'X-Checker-CSRF':'1'},json={'email':'journaliste@checker.mg','password':'wrong'}).status_code==401
     assert client.get('/api/auth/me',headers=journalist).json()['role']=='journalist'
 
 def test_demo_account_cannot_login_in_production(client,monkeypatch):
     monkeypatch.setattr('app.main.APP_ENV','production')
-    response=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'http://localhost:5173'},json={'email':'journaliste@checker.local','password':'Journaliste2026!'})
+    response=client.post('/api/auth/login',headers={'X-Checker-CSRF':'1','Origin':'http://localhost:5173'},json={'email':'journaliste@checker.mg','password':'Journaliste2026!'})
     assert response.status_code==401
 
 def test_demo_seed_requires_explicit_guard(monkeypatch):

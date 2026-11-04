@@ -3,7 +3,8 @@ from io import BytesIO
 from uuid import uuid4
 from PIL import Image
 from app.core import c2pa_analyze, inspect_image, MAX_BYTES
-from app.core import SessionLocal, Case
+from app.core import SessionLocal, Case, CaseShare, Video
+from app import storage
 from app.core import NewsItem, NewsSource, NewsSync
 from app.news import parse_feed, sync_source
 from app.source_catalog import CATALOG
@@ -44,6 +45,35 @@ def test_import_valid(client,journalist,upload_case):
     assert data['claim_text']=='Légende non vérifiée'
     preview=client.get('/api/media/'+str(data['media']['id'])+'/preview',headers=journalist)
     assert preview.status_code==200 and preview.headers['content-type']=='image/jpeg'
+
+def test_share_link_is_read_only_and_revocable(client,journalist,upload_case):
+    created=client.post(f'/api/cases/{upload_case}/share',headers=journalist)
+    assert created.status_code==200
+    token=created.json()['token']
+    shared=client.get(f'/api/share/{token}')
+    assert shared.status_code==200
+    body=shared.json()
+    assert body['reference'].startswith('CK-') and body['media_kind']=='photo'
+    assert 'owner_id' not in body and 'evidence' not in body and 'verdicts' not in body
+    assert client.get(body['media_preview_url']).status_code==200
+    with SessionLocal() as db:
+        row=db.query(CaseShare).filter_by(case_id=upload_case).one()
+        assert row.token_hash != token and len(row.token_hash)==64
+    assert client.delete(f'/api/cases/{upload_case}/share',headers=journalist).status_code==200
+    assert client.get(f'/api/share/{token}').status_code==404
+
+def test_case_video_preview_supports_private_byte_ranges(client,journalist,upload_case):
+    key=f'video/{upload_case}/clip.mp4';payload=b'\x00\x00\x00\x18ftypisom'+b'video-content'
+    storage.put(key,payload,'video/mp4')
+    with SessionLocal() as db:
+        db.add(Video(case_id=upload_case,private_path=key,original_filename='clip.mp4',
+            sha256='a'*64,size_bytes=len(payload),duration_seconds=1.0,width=16,height=16,frame_ids_json='[]'))
+        db.commit()
+    assert client.get(f'/api/cases/{upload_case}/video').status_code==401
+    response=client.get(f'/api/cases/{upload_case}/video',headers={**journalist,'Range':'bytes=0-7'})
+    assert response.status_code==206 and response.content==payload[:8]
+    assert response.headers['content-range']==f'bytes 0-7/{len(payload)}'
+    assert client.get(f'/api/cases/{upload_case}/video',headers={**journalist,'Range':'bytes=999-'}).status_code==416
 
 def test_import_fake_and_oversized(client,journalist):
     fake=client.post('/api/media/upload',headers=journalist,files={'file':('malware.jpg',b'not a picture','image/jpeg')})

@@ -9,6 +9,7 @@ import tempfile
 import re
 import logging
 import time
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -25,7 +26,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import or_
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
-from .core import (Analysis, Case, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
+from .core import (Analysis, Case, CaseShare, Video, SocialPost, DirectorySource, DirectoryContact, StatisticalObservation, Evidence, SourceAssessment, SourceAssessmentHistory, Media, User, Verdict, NewsItem, NewsSource, NewsSync, SessionLocal,
     now, init_db, DEMO_USERS, DEMO_MODE, LOCAL_DEMO_CATALOG, make_token, revoke_token, get_user, verify_password, store_media, media_view,
     evidence_view, assessment_view, verdict_view, audit, valid_url, MAX_BYTES, c2pa_analyze, user_view, BASE_DIR, APP_ENV, tool_path)
 from .regions import REGIONS, NATIONAL, UNKNOWN, normalize_region
@@ -60,8 +61,9 @@ async def browser_session_protection(request:Request,call_next):
     csrf_required=login or unsafe and cookie_session
     origin=request.headers.get('origin')
     origin_invalid=(origin.rstrip('/') not in CORS_ORIGINS) if origin else APP_ENV=='production'
+    logged_path=re.sub(r'(/api/share/)[A-Za-z0-9_-]+',r'\1[redacted]',request.url.path)
     if csrf_required and (request.headers.get(CSRF_HEADER)!='1' or origin_invalid):
-        request_logger.warning('method=%s path=%s status=403 duration_ms=%.1f',request.method,request.url.path,(time.perf_counter()-started)*1000)
+        request_logger.warning('method=%s path=%s status=403 duration_ms=%.1f',request.method,logged_path,(time.perf_counter()-started)*1000)
         return Response('Request origin not allowed',status_code=403)
     response=await call_next(request)
     if request.url.path.startswith('/api/'):
@@ -72,7 +74,7 @@ async def browser_session_protection(request:Request,call_next):
         if APP_ENV=='production':
             response.headers.setdefault('Content-Security-Policy',"default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
     if request.url.path.startswith('/api/'):
-        request_logger.info('method=%s path=%s status=%s duration_ms=%.1f',request.method,request.url.path,response.status_code,(time.perf_counter()-started)*1000)
+        request_logger.info('method=%s path=%s status=%s duration_ms=%.1f',request.method,logged_path,response.status_code,(time.perf_counter()-started)*1000)
     return response
 
 def startup():
@@ -336,10 +338,10 @@ def list_news(q:str='',sector:str='',region:str='',source_id:str='',order:Litera
         except ValueError as exc: raise HTTPException(422,'Source invalide') from exc
     sort=NewsItem.published_at.asc().nullslast() if order=='oldest' else NewsItem.published_at.desc().nullslast()
     rows=stmt.order_by(sort,NewsItem.collected_at.desc()).limit(200).all()
-    sources=db.query(NewsSource).filter_by(enabled=True).order_by(NewsSource.name).all()
+    sources=db.query(NewsSource).filter(or_(NewsSource.enabled.is_(True),NewsSource.source_type=='press')).order_by(NewsSource.name).all()
     last=db.query(NewsSync).filter_by(status='success').order_by(NewsSync.completed_at.desc()).first()
     latest_errors=db.query(NewsSync).filter_by(status='error').order_by(NewsSync.completed_at.desc()).limit(3).all()
-    return {'items':[news_item_view(item,src) for item,src in rows], 'sources':[{'id':s.id,'name':s.name} for s in sources],
+    return {'items':[news_item_view(item,src) for item,src in rows], 'sources':[{'id':s.id,'name':s.name,'type':s.source_type,'enabled':s.enabled} for s in sources],
         'last_sync_at':last.completed_at if last else None,'errors':[s.error_message for s in latest_errors if s.error_message]}
 
 @app.post('/api/news/sync')
@@ -610,6 +612,73 @@ def report(case_id:int,db:Session=Depends(db_session),user:User=Depends(current_
     result['visibility']='private'
     return result
 
+def _share_for_token(token:str,db:Session):
+    if len(token)<32 or len(token)>100: raise HTTPException(404,'Fiche partagée introuvable')
+    digest=hashlib.sha256(token.encode('utf-8')).hexdigest()
+    share=db.query(CaseShare).filter_by(token_hash=digest).first()
+    if not share or share.revoked_at: raise HTTPException(404,'Fiche partagée introuvable')
+    return share
+
+@app.post('/api/cases/{case_id}/share')
+def create_case_share(case_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user); only_owner(item,user)
+    token=secrets.token_urlsafe(32)
+    share=db.query(CaseShare).filter_by(case_id=item.id).first()
+    if not share:
+        share=CaseShare(case_id=item.id,created_by=user.id,token_hash=hashlib.sha256(token.encode()).hexdigest())
+        db.add(share)
+    else:
+        share.created_by=user.id;share.created_at=now();share.revoked_at=None
+        share.token_hash=hashlib.sha256(token.encode()).hexdigest()
+    audit(db,user.id,item.id,'share_link_created',{})
+    db.commit()
+    return {'token':token}
+
+@app.delete('/api/cases/{case_id}/share')
+def revoke_case_share(case_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user); only_owner(item,user)
+    share=db.query(CaseShare).filter_by(case_id=item.id).first()
+    if share and not share.revoked_at:
+        share.revoked_at=now();audit(db,user.id,item.id,'share_link_revoked',{});db.commit()
+    return {'ok':True}
+
+@app.get('/api/share/{token}')
+def public_case_share(token:str,db:Session=Depends(db_session)):
+    share=_share_for_token(token,db);item=db.get(Case,share.case_id)
+    if not item: raise HTTPException(404,'Fiche partagée introuvable')
+    video=db.query(Video).filter_by(case_id=item.id).first()
+    media=db.get(Media,item.asset_id) if item.asset_id else None
+    if video and not media:
+        frame_ids=json.loads(video.frame_ids_json)
+        media=db.get(Media,frame_ids[0]) if frame_ids else None
+    news_row=db.query(NewsItem,NewsSource).join(NewsSource,NewsItem.source_id==NewsSource.id).filter(NewsItem.verification_case_id==item.id).first()
+    provenance={'title':news_row[0].title,'source':news_row[1].name,'url':news_row[0].original_url,
+        'published_at':news_row[0].published_at} if news_row else None
+    return {'reference':f'CK-{item.id:03d}','claim_text':item.claim_text,'status':item.status,
+        'sector':item.sector,'region':item.region,'created_at':item.created_at,
+        'original_source_url':item.original_source_url,'news_provenance':provenance,
+        'media_kind':'video' if video else 'photo' if media else None,
+        'media_filename':video.original_filename if video else media.original_filename if media else None,
+        'media_preview_url':f'/api/share/{token}/media' if media else None,
+        'media_note':'Aperçu de l’image-clé; le fichier vidéo original et ses métadonnées ne sont pas publiés.' if video else None,
+        'created_at_share':share.created_at}
+
+@app.get('/api/share/{token}/media')
+def public_case_share_media(token:str,db:Session=Depends(db_session)):
+    share=_share_for_token(token,db);item=db.get(Case,share.case_id)
+    if not item: raise HTTPException(404,'Fiche partagée introuvable')
+    media=db.get(Media,item.asset_id) if item.asset_id else None
+    if not media:
+        video=db.query(Video).filter_by(case_id=item.id).first()
+        frame_ids=json.loads(video.frame_ids_json) if video else []
+        media=db.get(Media,frame_ids[0]) if frame_ids else None
+    if not media: raise HTTPException(404,'Aucun aperçu disponible')
+    with Image.open(BytesIO(storage.read(media.private_path))) as im:
+        im=ImageOps.exif_transpose(im);im.thumbnail((1200,800))
+        if im.mode not in ('RGB','L'): im=im.convert('RGB')
+        output=BytesIO();im.save(output,format='JPEG',quality=83)
+    return Response(output.getvalue(),media_type='image/jpeg',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
 @app.get('/api/media/{media_id}/preview')
 def preview(media_id:int,db:Session=Depends(db_session),user:User=Depends(current_user)):
     media=db.get(Media,media_id)
@@ -630,6 +699,28 @@ def preview(media_id:int,db:Session=Depends(db_session),user:User=Depends(curren
         buf=BytesIO();im.save(buf,format='JPEG',quality=83)
         buf.seek(0)
     return StreamingResponse(buf,media_type='image/jpeg',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+@app.get('/api/cases/{case_id}/video')
+def case_video(case_id:int,range_header:str|None=Header(default=None,alias='Range'),db:Session=Depends(db_session),user:User=Depends(current_user)):
+    item=get_case(case_id,db,user)
+    video=db.query(Video).filter_by(case_id=item.id).first()
+    if not video: raise HTTPException(404,'Vidéo introuvable')
+    filename=Path(video.original_filename).name.replace('"','')[:180] or 'video.mp4'
+    payload=storage.read(video.private_path);headers={'Cache-Control':'private, no-store',
+        'Content-Disposition':f'inline; filename="{filename}"','X-Content-Type-Options':'nosniff',
+        'Accept-Ranges':'bytes'}
+    if range_header:
+        match=re.fullmatch(r'bytes=(\d*)-(\d*)',range_header.strip())
+        if not match or (not match.group(1) and not match.group(2)):
+            return Response(status_code=416,headers={'Content-Range':f'bytes */{len(payload)}'})
+        start=int(match.group(1)) if match.group(1) else max(0,len(payload)-int(match.group(2)))
+        end=int(match.group(2)) if match.group(1) and match.group(2) else len(payload)-1
+        if start>=len(payload) or end<start:
+            return Response(status_code=416,headers={'Content-Range':f'bytes */{len(payload)}'})
+        end=min(end,len(payload)-1);headers['Content-Range']=f'bytes {start}-{end}/{len(payload)}'
+        headers['Content-Length']=str(end-start+1)
+        return Response(payload[start:end+1],status_code=206,media_type='video/mp4',headers=headers)
+    return Response(payload,media_type='video/mp4',headers=headers)
 
 def source_view(s,db:Session):
     return {'id':s.id,'organization':s.organization,'acronym':s.acronym,'organization_type':s.organization_type,

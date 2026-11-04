@@ -644,5 +644,19 @@
   "sector.water": "Eau et assainissement",
   "sector.justice": "Justice",
   "sector.transport": "Transports",
-  "stats.demoLabel": "DONNÉE FICTIVE — DÉMONSTRATION · ne pas citer comme donnée réelle"
+  "stats.demoLabel": "DONNÉE FICTIVE — DÉMONSTRATION · ne pas citer comme donnée réelle",
+  "workspace.shareCase": "Partager la fiche",
+  "workspace.shareGenerating": "Cr?ation du lien?",
+  "workspace.sharePanelTitle": "Lien de partage pr?t",
+  "workspace.shareWarning": "Toute personne ayant le lien peut consulter l?affirmation, la provenance et l?aper?u du m?dia. Les notes priv?es ne sont pas incluses. Vous pouvez r?voquer le lien ? tout moment.",
+  "workspace.shareQrAlt": "Code QR ouvrant la fiche partag?e",
+  "workspace.shareCopy": "Copier le lien",
+  "workspace.shareCopied": "Lien copi?",
+  "workspace.shareRevoke": "R?voquer le lien",
+  "workspace.sharePublicHeader": "Fiche de v?rification partag?e",
+  "workspace.shareProvenance": "Provenance de la publication",
+  "workspace.shareOpenSource": "Ouvrir la source",
+  "workspace.shareNoSource": "Aucune source d?origine renseign?e.",
+  "workspace.shareDisclaimer": "Cette fiche rassemble des ?l?ments ? examiner. Elle ne certifie pas l?affirmation : la conclusion reste de la responsabilit? du journaliste.",
+  "news.curatedNote": "Ces titres sont repris depuis les pages de leurs ?diteurs. La collecte RSS automatique n?est pas active dans cette d?monstration locale."
 }

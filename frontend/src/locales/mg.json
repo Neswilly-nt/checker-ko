@@ -644,5 +644,19 @@
   "sector.water": "Rano sy fanadiovana",
   "sector.justice": "Fitsarana",
   "sector.transport": "Fitaterana",
-  "stats.demoLabel": "ANGON-DRISA FORONINA — HO AN’NY DEMONSTRATION · aza raisina ho tena angon-drisa"
+  "stats.demoLabel": "ANGON-DRISA FORONINA — HO AN’NY DEMONSTRATION · aza raisina ho tena angon-drisa",
+  "workspace.shareCase": "Zarao ny takelaka",
+  "workspace.shareGenerating": "Mamorona rohy?",
+  "workspace.sharePanelTitle": "Vonona ny rohy fizarana",
+  "workspace.shareWarning": "Afaka mijery ny filazana, ny loharano ary ny santionan?ny rakitra izay manana ity rohy ity. Tsy zaraina ny naoty manokana. Azonao foanana amin?ny fotoana rehetra ny rohy.",
+  "workspace.shareQrAlt": "Kaody QR manokatra ny takelaka nozaraina",
+  "workspace.shareCopy": "Adikao ny rohy",
+  "workspace.shareCopied": "Voadika ny rohy",
+  "workspace.shareRevoke": "Foano ny rohy",
+  "workspace.sharePublicHeader": "Takelaka fanamarinana nozaraina",
+  "workspace.shareProvenance": "Loharanon?ny lahatsoratra",
+  "workspace.shareOpenSource": "Sokafy ny loharano",
+  "workspace.shareNoSource": "Tsy misy loharano niandohana voasoratra.",
+  "workspace.shareDisclaimer": "Manangona zavatra hodinihina ity takelaka ity. Tsy manamarina ny filazana izy; ny mpanao gazety no tompon?andraikitra amin?ny fehin-kevitra.",
+  "news.curatedNote": "Nalaina tao amin?ny pejin?ny mpamoaka azy ireo lohateny ireo. Tsy mandeha amin?ity kinova fampisehoana eo an-toerana ity ny fanangonana RSS mandeha ho azy."
 }

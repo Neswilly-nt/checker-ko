@@ -104,6 +104,15 @@ class Case(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+class CaseShare(Base):
+    __tablename__ = 'case_shares'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey('verification_cases.id'), unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    revoked_at: Mapped[datetime|None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 class Video(Base):
     __tablename__ = 'case_videos'
     id: Mapped[int] = mapped_column(primary_key=True)

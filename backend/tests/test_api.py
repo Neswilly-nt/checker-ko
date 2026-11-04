@@ -317,6 +317,13 @@ def test_news_feed_parse_deduplication_and_case_creation(client,journalist,edito
     assert duplicate.json()['id']==created.json()['id']
     item=client.get(f"/api/cases/{created.json()['id']}",headers=journalist).json()
     assert item['claim_text']=='Publication a examiner' and item['original_source_url']=='https://example.org/article'
+    assert item['news_provenance']['kind']=='press_article'
+    assert item['news_provenance']['title']=='Publication a examiner'
+    assert item['news_provenance']['source']=='Madagascar Tribune'
+    assert item['news_provenance']['original_url']=='https://example.org/article'
+    assert item['news_provenance']['published_at'].startswith('2026-11-03T10:00:00')
+    assert item['news_provenance']['verification_status']=='to_verify'
+    assert item['social_posts']==[] and item['evidence']==[] and item['verdicts']==[]
 
 def test_news_invalid_feed_and_unknown_dates():
     assert parse_feed(b'<rss><channel><item><title>Sans lien</title></item></channel></rss>')==[]

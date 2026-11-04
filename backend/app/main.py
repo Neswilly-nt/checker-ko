@@ -265,12 +265,17 @@ def case_view(db,item,user):
     assessments={value.evidence_id:value for value in db.query(SourceAssessment).filter_by(case_id=item.id).all()}
     verdicts=db.query(Verdict).filter_by(case_id=item.id).order_by(Verdict.id.desc()).all()
     author=db.get(User,item.owner_id)
+    news_row=db.query(NewsItem,NewsSource).join(NewsSource,NewsItem.source_id==NewsSource.id).filter(NewsItem.verification_case_id==item.id).first()
+    news_provenance=({'kind':'press_article','title':news_row[0].title,'source':news_row[1].name,
+        'original_url':news_row[0].original_url,'published_at':news_row[0].published_at,
+        'collected_at':news_row[0].collected_at,'verification_status':'to_verify'} if news_row else None)
     return {'id':item.id,'claim_text':item.claim_text,'original_source_url':item.original_source_url,
         'status':item.status,'sector':item.sector,'region':item.region,'created_at':item.created_at,'updated_at':item.updated_at,
         'owner_id':item.owner_id,'owner_name':author.name,'media':media_view(media,analysis) if media else None,
         'video':{'filename':video.original_filename,'sha256':video.sha256,'size_bytes':video.size_bytes,
                  'duration_seconds':video.duration_seconds,'width':video.width,'height':video.height,
                  'frames':[media_view(db.get(Media,mid)) for mid in json.loads(video.frame_ids_json)]} if video else None,
+        'news_provenance':news_provenance,
         'social_posts':[{'id':post.id,'platform':post.platform,'original_url':post.original_url,'declared_account':post.declared_account,'published_at':post.published_at,'capture_date':post.capture_date,'observation':post.observation,'created_at':post.created_at} for post in db.query(SocialPost).filter_by(case_id=item.id).order_by(SocialPost.id.desc()).all()],
         'matches':matches_for(db,item,user),'evidence':[evidence_view(e,assessments.get(e.id)) for e in evidence],
         'verdicts':[verdict_view(v,db) for v in verdicts]}

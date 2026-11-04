@@ -635,5 +635,9 @@
   "verify.limitText": "Texte / lien : texte libre ou URL",
   "verify.reminderTitle": "Rappel important",
   "verify.reminder": "Checker-ko aide à examiner et organiser les informations. Le verdict final reste la responsabilité du journaliste.",
-  "verify.urlPlaceholder": "https://…"
+  "verify.urlPlaceholder": "https://…",
+  "guidance.searchManually": "Rechercher manuellement dans l’annuaire",
+  "workspace.newsProvenanceTitle": "Provenance de l’article",
+  "workspace.newsArticleType": "Article de presse · à vérifier",
+  "workspace.newsProvenanceDisclaimer": "Cette publication est un point de départ pour l’enquête, pas une preuve validée."
 }

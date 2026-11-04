@@ -607,7 +607,7 @@
   "guidance.sector": "Same sector",
   "guidance.sectorRegion": "Same sector · {{region}} region",
   "guidance.reference": "View public reference",
-  "guidance.empty": "No matching directory entry for this case.",
+  "guidance.empty": "No matching directory entry was found for this case.",
   "guidance.warning": "A suggestion does not prove the claim. Check the entry and corroborate the information.",
   "landing.backHome": "Back to home",
   "verify.kicker": "EDITORIAL VERIFICATION",
@@ -635,5 +635,9 @@
   "verify.limitText": "Text / link: free text or URL",
   "verify.reminderTitle": "Important reminder",
   "verify.reminder": "Checker-ko helps examine and organize information. The final verdict remains the journalist’s responsibility.",
-  "verify.urlPlaceholder": "https://…"
+  "verify.urlPlaceholder": "https://…",
+  "guidance.searchManually": "Search the directory manually",
+  "workspace.newsProvenanceTitle": "Article provenance",
+  "workspace.newsArticleType": "Press article · unverified",
+  "workspace.newsProvenanceDisclaimer": "This publication is a starting point for the investigation, not validated evidence."
 }

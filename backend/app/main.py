@@ -671,16 +671,15 @@ def sources(sector:str='',region:str='',organization_type:str='',q:str='',includ
 @app.get('/api/statistics')
 def statistical_publications(sector:str='',q:str='',db:Session=Depends(db_session),user:User=Depends(current_user)):
     """Publication references and persisted observations with their exact provenance."""
-    if DEMO_MODE:return {'items':[],'observation_count':0}
     query=q.strip().casefold()[:100]
     items=[]
     for publication in PUBLICATIONS:
         if sector and publication['sector']!=sector:continue
         item=publication_view(publication)
-        rows=db.query(StatisticalObservation).filter_by(publication_key=item['key']).order_by(StatisticalObservation.year.desc(),StatisticalObservation.id.desc()).all()
-        item['observations']=[observation_view(row) for row in rows]
+        rows=[] if DEMO_MODE else db.query(StatisticalObservation).filter_by(publication_key=item['key']).order_by(StatisticalObservation.year.desc(),StatisticalObservation.id.desc()).all()
+        item['observations'].extend(observation_view(row) for row in rows)
         searchable=' '.join(str(item.get(k) or '') for k in ('title','producer','sector','description','reference_year')).casefold()
-        searchable+=' '+' '.join(row['indicator'].casefold() for row in item['observations'])
+        searchable+=' '+' '.join(observation['indicator'].casefold() for observation in item['observations'])
         if query and query not in searchable:continue
         items.append(item)
     return {'items':items,'observation_count':sum(len(item['observations']) for item in items)}

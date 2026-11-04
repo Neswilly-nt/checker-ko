@@ -575,10 +575,12 @@ def init_db():
         if not DEMO_MODE:
             for old in db.query(DirectorySource).filter_by(demo_only=True,archived=False).all():
                 old.archived=True
-            for entry in CATALOG:
-                if db.query(DirectorySource).filter_by(source_key=entry['key']).first(): continue
-                if db.query(DirectorySource).filter_by(website_url=entry['website_url'],demo_only=False).first(): continue
-                db.add(DirectorySource(organization=entry['organization'],acronym=entry['acronym'],organization_type=entry['kind'],sector=entry['sector'],description=entry['description'],website_url=entry['website_url'],reference_url=entry['reference_url'],resources_json=json.dumps(entry['resources']),geographic_scope='Tout Madagascar',region=NATIONAL,last_checked_at=CHECKED_AT,verification_status='partiellement_verifiees',source_key=entry['key'],demo_only=False,archived=False))
+        # The curated institutional directory is factual public reference data,
+        # so keep it available even when demo mode disables user data workflows.
+        for entry in CATALOG:
+            if db.query(DirectorySource).filter_by(source_key=entry['key']).first(): continue
+            if db.query(DirectorySource).filter_by(website_url=entry['website_url'],demo_only=False).first(): continue
+            db.add(DirectorySource(organization=entry['organization'],acronym=entry['acronym'],organization_type=entry['kind'],sector=entry['sector'],description=entry['description'],website_url=entry['website_url'],reference_url=entry['reference_url'],resources_json=json.dumps(entry['resources']),geographic_scope='Tout Madagascar',region=NATIONAL,last_checked_at=entry.get('last_checked_at',CHECKED_AT),verification_status='partiellement_verifiees',source_key=entry['key'],demo_only=False,archived=False))
         db.commit()
         # Seed archived photos once, shared by all logged-in journalists for demonstration only.
         if APP_ENV == 'development' and not db.query(Media).filter_by(is_archive=True).first():

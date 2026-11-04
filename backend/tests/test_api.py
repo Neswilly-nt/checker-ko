@@ -184,27 +184,36 @@ def test_review_optional_and_by_other_user(client,journalist,editor,upload_case)
 
 def test_directory_and_unverified_demo_labels(client,journalist,editor):
     values=client.get('/api/sources',headers=journalist).json()['items']
-    assert len(values)==5
+    assert len(values)==9
     assert all(not x['demo_only'] and not x['archived'] for x in values)
-    assert {x['acronym'] for x in values}=={'BNGRC','MEN','INSTAT','METFP','DGM'}
+    assert {x['acronym'] for x in values}=={'BNGRC','MEN','INSTAT','METFP','DGM','Primature','MSANP','MEDD','MEF'}
     assert all(x['website_url'] and x['reference_url'] for x in values)
     assert client.get('/api/sources?include_archived=true',headers=journalist).status_code==403
     assert len(client.get('/api/sources?sector=éducation',headers=journalist).json()['items'])==2
-    assert len(client.get('/api/sources?region=National%20%2F%20Tout%20Madagascar',headers=journalist).json()['items'])==5
-    assert len(client.get('/api/sources?organization_type=ministère',headers=journalist).json()['items'])==2
+    assert len(client.get('/api/sources?region=National%20%2F%20Tout%20Madagascar',headers=journalist).json()['items'])==9
+    assert len(client.get('/api/sources?organization_type=ministère',headers=journalist).json()['items'])==5
     assert client.get('/api/sources/1',headers=journalist).status_code==200
     assert client.post('/api/sources',headers=journalist,json={'organization':'Organisme local','sector':'santé','description':'Un service public à examiner'}).status_code==403
     created=client.post('/api/sources',headers=editor,json={'organization':'Organisme local','sector':'santé','description':'Un service public à examiner'})
     assert created.status_code==201
     assert client.get(f"/api/sources/{created.json()['id']}",headers=editor).json()['verification_status']=='a_actualiser'
 
-def test_statistical_catalog_has_documented_publications_without_fabricated_observations(client,journalist):
+def test_statistical_catalog_has_sourced_documents_and_curated_observations(client,journalist):
     response=client.get('/api/statistics',headers=journalist)
     assert response.status_code==200
     items=response.json()['items']
     assert {item['key'] for item in items}=={'health-yearbook-2024','education-yearbook-2023-2024','rgph3-tome1'}
-    assert all(item['url'].startswith('https://') and item['observations']==[] for item in items)
-    assert response.json()['observation_count']==0
+    assert all(item['url'].startswith('https://') for item in items)
+    observations=[observation for item in items for observation in item['observations']]
+    assert len(observations)==4
+    assert {item['indicator']:item['value'] for item in observations}=={
+        'Population résidente des ménages ordinaires recensée':'25 674 196',
+        'Part des femmes dans la population résidente des ménages ordinaires':'50,7',
+        'Effectif des élèves des écoles primaires publiques et privées':'5 293 936',
+        'Effectif des élèves des collèges publics et privés':'1 264 347',
+    }
+    assert all(item['source_url'].startswith('https://') and item['source_locator'] for item in observations)
+    assert response.json()['observation_count']==4
     assert len(client.get('/api/statistics?sector=sant%C3%A9',headers=journalist).json()['items'])==1
     assert len(client.get('/api/statistics?q=RGPH',headers=journalist).json()['items'])==1
 
